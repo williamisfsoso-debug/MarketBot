@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const http = require("http");
 const {
     Client,
     GatewayIntentBits,
@@ -7,29 +8,6 @@ const {
 } = require("discord.js");
 
 const db = require("./database");
-
-const PREFIX = "!";
-const CURRENCY = "🪙";
-const TOKEN = process.env.TOKEN;
-
-if (!TOKEN) {
-    throw new Error("TOKEN is missing from environment variables.");
-}
-
-/* =========================================================
-   OWNERS
-========================================================= */
-
-const OWNERS = [
-    "1410867769729351772",
-    "1300582883873787960"
-];
-
-const CO_OWNER = "1388444379743785071";
-
-/* =========================================================
-   CLIENT
-========================================================= */
 
 const client = new Client({
     intents: [
@@ -39,26 +17,16 @@ const client = new Client({
     ]
 });
 
-/* =========================================================
-   STATE
-========================================================= */
+const PREFIX = "!";
+const CURRENCY = "🪙";
 
-let databaseReady = false;
-let marketInterval = null;
+const OWNERS = [
+    "1410867769729351772",
+    "1300582883873787960"
+];
 
-/*
-   Prevent the same Discord message from being processed twice
-   by this running process.
-*/
-const processedMessages = new Set();
-
-setInterval(() => {
-    processedMessages.clear();
-}, 60 * 1000);
-
-/* =========================================================
-   ASSET ICONS
-========================================================= */
+const CO_OWNER = "1388444379743785071";
+const PORT = Number(process.env.PORT) || 10000;
 
 const ASSET_ICONS = {
     BTC: "₿",
@@ -68,7 +36,6 @@ const ASSET_ICONS = {
     DOGE: "Ð",
     ADA: "₳",
     BNB: "◆",
-
     TSLA: "⚡",
     AAPL: "",
     NVDA: "◈",
@@ -80,6 +47,22 @@ const ASSET_ICONS = {
 };
 
 /* =========================================================
+   RENDER
+========================================================= */
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, {
+        "Content-Type": "text/plain"
+    });
+
+    res.end("MarketBot is online!");
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+    console.log(`🌐 Web server listening on port ${PORT}`);
+});
+
+/* =========================================================
    HELPERS
 ========================================================= */
 
@@ -89,434 +72,241 @@ function num(value) {
 }
 
 function money(value) {
-    return `${CURRENCY} ${num(value).toLocaleString("en-US", {
+    return num(value).toLocaleString("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-    })}`;
-}
-
-function compactMoney(value) {
-    const n = num(value);
-
-    if (n >= 1_000_000_000) {
-        return `${CURRENCY} ${(n / 1_000_000_000).toFixed(2)}B`;
-    }
-
-    if (n >= 1_000_000) {
-        return `${CURRENCY} ${(n / 1_000_000).toFixed(2)}M`;
-    }
-
-    if (n >= 1_000) {
-        return `${CURRENCY} ${(n / 1_000).toFixed(2)}K`;
-    }
-
-    return money(n);
+    });
 }
 
 function formatAmount(value) {
     const n = num(value);
 
-    if (Number.isInteger(n)) {
-        return n.toLocaleString("en-US");
-    }
-
     return n.toLocaleString("en-US", {
+        minimumFractionDigits: 0,
         maximumFractionDigits: 6
     });
 }
 
-function percent(value) {
+function formatPrice(value) {
     const n = num(value);
-    return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+
+    if (n >= 1_000_000_000) {
+        return `$${(n / 1_000_000_000).toFixed(2)}B`;
+    }
+
+    if (n >= 1_000_000) {
+        return `$${(n / 1_000_000).toFixed(2)}M`;
+    }
+
+    if (n >= 1_000) {
+        return `$${n.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        })}`;
+    }
+
+    if (n >= 1) {
+        return `$${n.toFixed(2)}`;
+    }
+
+    return `$${n.toFixed(4)}`;
 }
 
-function cleanSymbol(symbol) {
-    return String(symbol || "").trim().toUpperCase();
+function percent(value) {
+    const n = num(value);
+
+    if (n > 0) return `+${n.toFixed(2)}%`;
+    return `${n.toFixed(2)}%`;
+}
+
+function cleanSymbol(value) {
+    return String(value || "").trim().toUpperCase();
 }
 
 function assetIcon(symbol) {
     return ASSET_ICONS[cleanSymbol(symbol)] || "◆";
 }
 
-function isOwner(userId) {
-    return OWNERS.includes(userId);
+function parseAmount(value) {
+    if (!value) return NaN;
+
+    return Number(
+        String(value)
+            .replace(/,/g, "")
+            .replace(/\$/g, "")
+            .trim()
+    );
 }
 
-function isCoOwner(userId) {
-    return userId === CO_OWNER;
+function isOwner(id) {
+    return OWNERS.includes(id);
 }
 
-function isStaff(userId) {
-    return isOwner(userId) || isCoOwner(userId);
+function isStaff(id) {
+    return isOwner(id) || id === CO_OWNER;
 }
 
 function directionIcon(change) {
-    if (num(change) > 0) return "📈";
-    if (num(change) < 0) return "📉";
-    return "➖";
-}
+    const n = num(change);
 
-function directionArrow(change) {
-    if (num(change) > 0) return "▲";
-    if (num(change) < 0) return "▼";
-    return "•";
-}
-
-function directionWord(change) {
-    if (num(change) > 0) return "UP";
-    if (num(change) < 0) return "DOWN";
-    return "FLAT";
-}
-
-function profitEmoji(value) {
-    if (num(value) > 0) return "🟢";
-    if (num(value) < 0) return "🔴";
+    if (n > 0) return "🟢";
+    if (n < 0) return "🔴";
     return "⚪";
 }
 
-function trendText(change) {
+function directionArrow(change) {
     const n = num(change);
 
-    if (n >= 25) return "🔥 Extremely bullish";
-    if (n >= 10) return "🚀 Strong bullish";
-    if (n >= 3) return "📈 Bullish";
-    if (n > 0) return "↗️ Slightly bullish";
-
-    if (n <= -25) return "💥 Extremely bearish";
-    if (n <= -10) return "📉 Strong bearish";
-    if (n <= -3) return "📉 Bearish";
-    if (n < 0) return "↘️ Slightly bearish";
-
-    return "➖ Flat";
+    if (n > 0) return "▲";
+    if (n < 0) return "▼";
+    return "━";
 }
 
-function recentMove(change) {
-    const n = num(change);
-
-    if (n > 0) return `▲ ${percent(n)}`;
-    if (n < 0) return `▼ ${percent(n)}`;
-
-    return "• 0.00%";
+function findAsset(symbol) {
+    return db.getAsset(cleanSymbol(symbol));
 }
-
-/* =========================================================
-   GRAPH
-========================================================= */
 
 function makeGraph(history) {
-    if (!history || !history.length) {
-        return "▁▁▁▁▁▁▁▁▁▁▁▁";
+    if (!history || history.length < 2) {
+        return "▁▁▁▁▁▁▁▁▁▁";
     }
 
     const bars = "▁▂▃▄▅▆▇█";
 
-    const values = history.map(item => num(item.price));
+    const values = history
+        .map(x => num(x.price))
+        .slice(-24);
 
     const min = Math.min(...values);
     const max = Math.max(...values);
 
     if (min === max) {
-        return "▄▄▄▄▄▄▄▄▄▄▄▄";
+        return "▄".repeat(values.length);
     }
 
-    return values
-        .slice(-24)
-        .map(value => {
-            const normalized =
-                (value - min) / (max - min);
+    return values.map(value => {
+        const ratio = (value - min) / (max - min);
 
-            const index = Math.max(
-                0,
-                Math.min(
-                    bars.length - 1,
-                    Math.round(
-                        normalized * (bars.length - 1)
-                    )
-                )
-            );
+        const index = Math.max(
+            0,
+            Math.min(
+                bars.length - 1,
+                Math.round(ratio * (bars.length - 1))
+            )
+        );
 
-            return bars[index];
-        })
-        .join("");
-}
-
-/* =========================================================
-   ERROR EMBED
-========================================================= */
-
-function errorEmbed(message) {
-    return new EmbedBuilder()
-        .setColor(0xed4245)
-        .setTitle("❌ Something went wrong")
-        .setDescription(String(message))
-        .setFooter({
-            text: "MarketBot"
-        })
-        .setTimestamp();
+        return bars[index];
+    }).join("");
 }
 
 /* =========================================================
    MARKET
 ========================================================= */
 
-function createMarketEmbed(assets) {
+async function createMarketEmbed() {
+    const assets = await db.getAllAssets();
+
     const crypto = assets.filter(
-        asset =>
-            String(asset.type).toLowerCase() === "crypto"
+        a => String(a.type).toLowerCase() === "crypto"
     );
 
     const stocks = assets.filter(
-        asset =>
-            String(asset.type).toLowerCase() === "stock"
+        a => String(a.type).toLowerCase() === "stock"
     );
 
-    const formatAsset = asset => {
-        const change = num(asset.change_percent);
+    const lines = list => {
+        if (!list.length) return "No assets available.";
 
-        return [
-            `${assetIcon(asset.symbol)} **${asset.symbol}**`,
-            `> ${money(asset.price)}  ${directionArrow(change)} **${percent(change)}**`
-        ].join("\n");
+        return list.map(asset => {
+            const change = num(asset.change_percent);
+
+            return (
+                `${assetIcon(asset.symbol)} **${asset.symbol}** \`${asset.name}\`\n` +
+                `> **${formatPrice(asset.price)}**  ` +
+                `${directionIcon(change)} ${directionArrow(change)} **${percent(change)}**`
+            );
+        }).join("\n\n");
     };
 
-    const embed = new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle("📊 Market Overview")
-        .setDescription(
-            "Live virtual market prices • Prices automatically move every 30 seconds."
-        )
-        .setTimestamp()
-        .setFooter({
-            text: "MarketBot • Virtual Economy"
-        });
-
-    if (crypto.length) {
-        embed.addFields({
-            name: "🪙 CRYPTO",
-            value: crypto.map(formatAsset).join("\n\n"),
-            inline: false
-        });
-    }
-
-    if (stocks.length) {
-        embed.addFields({
-            name: "📈 STOCKS",
-            value: stocks.map(formatAsset).join("\n\n"),
-            inline: false
-        });
-    }
-
-    return embed;
-}
-
-/* =========================================================
-   INFO
-========================================================= */
-
-async function createInfoEmbed(asset) {
-    const history = await db.getMarketHistory(
-        asset.symbol,
-        40
-    );
-
-    const values = history.length
-        ? history.map(item => num(item.price))
-        : [num(asset.price)];
-
-    const high = Math.max(...values);
-    const low = Math.min(...values);
-    const change = num(asset.change_percent);
-
     return new EmbedBuilder()
-        .setColor(
-            change >= 0
-                ? 0x57f287
-                : 0xed4245
-        )
-        .setTitle(
-            `${assetIcon(asset.symbol)} ${asset.name} (${asset.symbol})`
-        )
+        .setColor(0x5865F2)
+        .setTitle("📊  MARKET")
         .setDescription(
-            `### ${money(asset.price)}\n` +
-            `${directionIcon(change)} **${percent(change)}** • ${directionWord(change)}`
+            "━━━━━━━━━━━━━━━━━━━━\n" +
+            "**LIVE VIRTUAL MARKET**\n" +
+            "Prices update every 30 seconds.\n" +
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         .addFields(
             {
-                name: "📊 PRICE CHART",
-                value: `\`${makeGraph(history)}\``,
+                name: "₿  CRYPTO",
+                value: lines(crypto),
                 inline: false
             },
             {
-                name: "📈 Change",
-                value: percent(change),
-                inline: true
-            },
-            {
-                name: "🎯 Trend",
-                value: trendText(change),
-                inline: true
-            },
-            {
-                name: "💵 Base Price",
-                value: money(asset.base_price),
-                inline: true
-            },
-            {
-                name: "🔺 High",
-                value: money(high),
-                inline: true
-            },
-            {
-                name: "🔻 Low",
-                value: money(low),
-                inline: true
-            },
-            {
-                name: "⚡ Current Move",
-                value: recentMove(change),
-                inline: true
+                name: "📈  STOCKS",
+                value: lines(stocks),
+                inline: false
             }
         )
         .setFooter({
-            text: `MarketBot • ${asset.symbol}`
+            text: "MarketBot • Virtual Economy"
         })
         .setTimestamp();
 }
 
 /* =========================================================
-   HISTORY
+   BALANCE + NET WORTH
 ========================================================= */
 
-async function createHistoryEmbed(asset) {
-    const history = await db.getMarketHistory(
-        asset.symbol,
-        40
-    );
-
-    if (!history.length) {
-        return new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setTitle(
-                `📜 ${asset.name} (${asset.symbol}) History`
-            )
-            .setDescription(
-                "Historical data is still being collected."
-            )
-            .addFields({
-                name: "Current Price",
-                value: money(asset.price),
-                inline: true
-            })
-            .setTimestamp();
-    }
-
-    const values = history.map(item => num(item.price));
-
-    const start = values[0];
-    const current = values[values.length - 1];
-    const high = Math.max(...values);
-    const low = Math.min(...values);
-
-    const movement =
-        start === 0
-            ? 0
-            : ((current - start) / start) * 100;
-
-    return new EmbedBuilder()
-        .setColor(
-            movement >= 0
-                ? 0x57f287
-                : 0xed4245
-        )
-        .setTitle(
-            `📜 ${asset.name} (${asset.symbol}) History`
-        )
-        .setDescription(
-            `### ${directionIcon(movement)} ${percent(movement)}\n` +
-            `\`${makeGraph(history)}\``
-        )
-        .addFields(
-            {
-                name: "◀ Start",
-                value: money(start),
-                inline: true
-            },
-            {
-                name: "● Current",
-                value: money(current),
-                inline: true
-            },
-            {
-                name: "▶ Movement",
-                value: percent(movement),
-                inline: true
-            },
-            {
-                name: "🔺 High",
-                value: money(high),
-                inline: true
-            },
-            {
-                name: "🔻 Low",
-                value: money(low),
-                inline: true
-            },
-            {
-                name: "📊 Data Points",
-                value: String(history.length),
-                inline: true
-            }
-        )
-        .setFooter({
-            text: `MarketBot • ${asset.symbol}`
-        })
-        .setTimestamp();
-}
-
-/* =========================================================
-   BALANCE
-========================================================= */
-
-async function createBalanceEmbed(userId) {
-    const user = await db.getOrCreateUser(userId);
+async function createBalanceEmbed(userId, user) {
+    const account = await db.getOrCreateUser(userId);
     const portfolio = await db.getPortfolio(userId);
 
     const investments = portfolio.reduce(
-        (sum, item) =>
-            sum + num(item.value),
+        (total, item) => total + num(item.value),
         0
     );
 
-    const netWorth =
-        num(user.wallet) +
-        num(user.bank) +
-        investments;
+    const wallet = num(account.wallet);
+    const bank = num(account.bank);
+
+    const netWorth = wallet + bank + investments;
 
     return new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle("💳 Your Balance")
+        .setColor(0x5865F2)
+        .setAuthor({
+            name: `${user.username}'s Financial Overview`,
+            iconURL: user.displayAvatarURL()
+        })
+        .setTitle("💰  BALANCE")
         .setDescription(
-            "Your complete MarketBot financial overview."
+            "━━━━━━━━━━━━━━━━━━━━\n" +
+            "Your complete virtual financial overview.\n" +
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         .addFields(
             {
-                name: "👛 Wallet",
-                value: `### ${money(user.wallet)}`,
+                name: "🪙  Wallet",
+                value: `**${money(wallet)}**`,
                 inline: true
             },
             {
-                name: "🏦 Bank",
-                value: `### ${money(user.bank)}`,
+                name: "🏦  Bank",
+                value: `**${money(bank)}**`,
                 inline: true
             },
             {
-                name: "📈 Investments",
-                value: `### ${money(investments)}`,
+                name: "📈  Investments",
+                value: `**${money(investments)}**`,
                 inline: true
             },
             {
-                name: "💎 Net Worth",
-                value: `### ${money(netWorth)}`,
+                name: "💎  NET WORTH",
+                value:
+                    `\`\`\`fix\n` +
+                    `${CURRENCY} ${money(netWorth)}\n` +
+                    `\`\`\``,
                 inline: false
             }
         )
@@ -535,68 +325,203 @@ async function createPortfolioEmbed(userId) {
 
     if (!portfolio.length) {
         return new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setTitle("📁 Your Portfolio")
+            .setColor(0x5865F2)
+            .setTitle("📊  PORTFOLIO")
             .setDescription(
-                "You don't own any assets yet.\n\n" +
+                "Your portfolio is currently empty.\n\n" +
                 "Use `!buy BTC 1` to start investing."
             )
+            .setFooter({
+                text: "MarketBot • Virtual Investments"
+            })
             .setTimestamp();
     }
 
-    let totalInvested = 0;
-    let totalValue = 0;
+    const totalValue = portfolio.reduce(
+        (sum, item) => sum + num(item.value),
+        0
+    );
 
     const lines = portfolio.map(item => {
+        const symbol = cleanSymbol(item.symbol);
         const amount = num(item.amount);
+        const current = num(item.price);
         const average = num(item.average_price);
-        const currentPrice = num(item.price);
         const value = num(item.value);
+        const profit = (current - average) * amount;
 
-        const invested = amount * average;
-        const pnl = value - invested;
-
-        totalInvested += invested;
-        totalValue += value;
-
-        return [
-            `${assetIcon(item.symbol)} **${item.symbol}**`,
-            `> Amount: **${formatAmount(amount)}**`,
-            `> Current: **${money(currentPrice)}**`,
-            `> Value: **${money(value)}**`,
-            `> P/L: ${profitEmoji(pnl)} **${money(pnl)}**`
-        ].join("\n");
+        return (
+            `${assetIcon(symbol)} **${symbol}**\n` +
+            `> Amount: **${formatAmount(amount)}**\n` +
+            `> Value: **${formatPrice(value)}**\n` +
+            `> P/L: ${directionIcon(profit)} **${formatPrice(profit)}**`
+        );
     });
 
-    const totalPnl = totalValue - totalInvested;
+    return new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle("📊  PORTFOLIO")
+        .setDescription(lines.join("\n\n"))
+        .addFields({
+            name: "💎 Total Portfolio Value",
+            value: `**${formatPrice(totalValue)}**`,
+            inline: false
+        })
+        .setFooter({
+            text: "MarketBot • Virtual Investments"
+        })
+        .setTimestamp();
+}
+
+/* =========================================================
+   INFO
+========================================================= */
+
+async function createInfoEmbed(symbol) {
+    const asset = await findAsset(symbol);
+
+    if (!asset) return null;
+
+    const history = await db.getMarketHistory(
+        asset.symbol,
+        40
+    );
+
+    const prices = history.map(x => num(x.price));
+
+    const high = prices.length
+        ? Math.max(...prices)
+        : num(asset.price);
+
+    const low = prices.length
+        ? Math.min(...prices)
+        : num(asset.price);
+
+    const change = num(asset.change_percent);
 
     return new EmbedBuilder()
         .setColor(
-            totalPnl >= 0
-                ? 0x57f287
-                : 0xed4245
+            change > 0
+                ? 0x57F287
+                : change < 0
+                    ? 0xED4245
+                    : 0x5865F2
         )
-        .setTitle("📁 Your Portfolio")
-        .setDescription(lines.join("\n\n"))
+        .setTitle(
+            `${assetIcon(asset.symbol)}  ${asset.symbol} • ${asset.name}`
+        )
+        .setDescription(
+            `**${formatPrice(asset.price)}**\n` +
+            `${directionIcon(change)} **${percent(change)}**\n\n` +
+            `\`${makeGraph(history)}\``
+        )
         .addFields(
             {
-                name: "💰 Total Invested",
-                value: money(totalInvested),
+                name: "💵 Price",
+                value: `**${formatPrice(asset.price)}**`,
                 inline: true
             },
             {
-                name: "📊 Current Value",
-                value: money(totalValue),
+                name: "📈 Change",
+                value: `${directionIcon(change)} **${percent(change)}**`,
                 inline: true
             },
             {
-                name: "📈 Total P/L",
-                value: `${profitEmoji(totalPnl)} ${money(totalPnl)}`,
+                name: "🏷️ Type",
+                value: `**${String(asset.type).toUpperCase()}**`,
+                inline: true
+            },
+            {
+                name: "🔺 High",
+                value: `**${formatPrice(high)}**`,
+                inline: true
+            },
+            {
+                name: "🔻 Low",
+                value: `**${formatPrice(low)}**`,
+                inline: true
+            },
+            {
+                name: "📌 Base",
+                value: `**${formatPrice(asset.base_price)}**`,
                 inline: true
             }
         )
         .setFooter({
-            text: "MarketBot • Portfolio"
+            text: "MarketBot • Asset Information"
+        })
+        .setTimestamp();
+}
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+async function createHistoryEmbed(symbol) {
+    const asset = await findAsset(symbol);
+
+    if (!asset) return null;
+
+    const history = await db.getMarketHistory(
+        asset.symbol,
+        40
+    );
+
+    if (!history.length) {
+        return new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle(
+                `${assetIcon(asset.symbol)} ${asset.symbol} • History`
+            )
+            .setDescription("Not enough history yet.")
+            .setTimestamp();
+    }
+
+    const prices = history.map(x => num(x.price));
+
+    const first = prices[0];
+    const current = prices[prices.length - 1];
+    const high = Math.max(...prices);
+    const low = Math.min(...prices);
+
+    const movement = first !== 0
+        ? ((current - first) / first) * 100
+        : 0;
+
+    return new EmbedBuilder()
+        .setColor(
+            movement > 0
+                ? 0x57F287
+                : movement < 0
+                    ? 0xED4245
+                    : 0x5865F2
+        )
+        .setTitle(
+            `${assetIcon(asset.symbol)}  ${asset.symbol} • HISTORY`
+        )
+        .setDescription(
+            `\`${makeGraph(history)}\`\n\n` +
+            `${directionIcon(movement)} **${percent(movement)}**`
+        )
+        .addFields(
+            {
+                name: "💵 Current",
+                value: `**${formatPrice(current)}**`,
+                inline: true
+            },
+            {
+                name: "🔺 High",
+                value: `**${formatPrice(high)}**`,
+                inline: true
+            },
+            {
+                name: "🔻 Low",
+                value: `**${formatPrice(low)}**`,
+                inline: true
+            }
+        )
+        .setFooter({
+            text: "MarketBot • Price History"
         })
         .setTimestamp();
 }
@@ -607,190 +532,232 @@ async function createPortfolioEmbed(userId) {
 
 function createHelpEmbed() {
     return new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle("📖 MarketBot Commands")
+        .setColor(0x5865F2)
+        .setTitle("📖  MARKETBOT")
         .setDescription(
-            "Everything you need for the virtual economy."
+            "━━━━━━━━━━━━━━━━━━━━\n" +
+            "**COMMAND CENTER**\n" +
+            "━━━━━━━━━━━━━━━━━━━━"
         )
         .addFields(
             {
-                name: "💳 FINANCES",
+                name: "💰 FINANCES",
                 value:
-                    "`!balance` — View balance\n" +
-                    "`!deposit <amount>` — Wallet → bank\n" +
-                    "`!withdraw <amount>` — Bank → wallet\n" +
-                    "`!portfolio` — View investments"
+                    "`!balance` — Balance + net worth\n" +
+                    "`!deposit <amount>` — Deposit\n" +
+                    "`!withdraw <amount>` — Withdraw\n" +
+                    "`!portfolio` — Investments",
+                inline: false
             },
             {
-                name: "📊 MARKET",
+                name: "📈 MARKET",
                 value:
-                    "`!market` — View all assets\n" +
+                    "`!market` — Live market\n" +
                     "`!info <asset>` — Asset details\n" +
-                    "`!history <asset>` — Price history"
+                    "`!history <asset>` — Price history",
+                inline: false
             },
             {
-                name: "💹 TRADING",
+                name: "💱 TRADING",
                 value:
-                    "`!buy <asset> <amount>` — Buy • use `all` for entire wallet\n" +
-                    "`!sell <asset> <amount>` — Sell • use `all` for entire holding"
+                    "`!buy <asset> <amount|all>` — Buy\n" +
+                    "`!sell <asset> <amount|all>` — Sell",
+                inline: false
             },
             {
                 name: "🎁 REWARDS",
                 value:
                     "`!daily` — Daily reward\n" +
                     "`!weekly` — Weekly reward\n" +
-                    "`!luck` — Daily luck"
+                    "`!luck` — Luck",
+                inline: false
             },
             {
                 name: "🛒 SHOP",
                 value:
-                    "`!shop` — View shop\n" +
-                    "`!shop buy <item>` — Purchase item\n" +
-                    "`!inventory` — View items"
+                    "`!shop` — Shop\n" +
+                    "`!shop buy <item>` — Purchase\n" +
+                    "`!inventory` — Inventory",
+                inline: false
             },
             {
                 name: "🏆 OTHER",
                 value:
-                    "`!leaderboard` — Top players\n" +
+                    "`!leaderboard` — Leaderboard\n" +
                     "`!transactions` — Transactions\n" +
-                    "`!ping` — Bot latency\n" +
-                    "`!owner` — Ownership"
+                    "`!ping` — Latency",
+                inline: false
             }
         )
         .setFooter({
             text: "MarketBot • Virtual Economy"
-        })
-        .setTimestamp();
+        });
 }
 
 /* =========================================================
    MARKET ENGINE
 ========================================================= */
 
+let marketUpdating = false;
+
 async function updateMarket() {
-    if (!databaseReady) return;
+    if (marketUpdating) return;
+
+    marketUpdating = true;
 
     try {
         const assets = await db.getAllAssets();
+
+        let updated = 0;
 
         for (const asset of assets) {
             const movement =
                 (Math.random() * 3.5 + 0.5) *
                 (Math.random() < 0.5 ? -1 : 1);
 
-            await db.setAssetChange(
-                asset.symbol,
-                movement
-            );
+            try {
+                const result = await db.setAssetChange(
+                    asset.symbol,
+                    movement
+                );
+
+                if (result?.success) {
+                    updated++;
+
+                    console.log(
+                        `[MARKET] ${asset.symbol}: ` +
+                        `${percent(result.oldChange)} -> ` +
+                        `${percent(result.newChange)}`
+                    );
+                }
+            } catch (error) {
+                console.error(
+                    `[MARKET] ${asset.symbol} failed:`,
+                    error?.stack || error
+                );
+            }
         }
 
-        console.log(
-            `[MARKET] Updated ${assets.length} assets.`
-        );
+        console.log(`[MARKET] Updated ${updated} assets.`);
     } catch (error) {
         console.error(
-            "[MARKET UPDATE ERROR]",
-            error
+            "[MARKET] Update failed:",
+            error?.stack || error
         );
+    } finally {
+        marketUpdating = false;
     }
 }
 
 /* =========================================================
-   COMMAND HANDLER
+   MESSAGE HANDLER
 ========================================================= */
 
 client.on("messageCreate", async message => {
     if (message.author.bot) return;
-    if (!databaseReady) return;
+    if (!message.content.startsWith(PREFIX)) return;
 
-    if (!message.content.startsWith(PREFIX)) {
-        return;
-    }
-
-    /*
-       Make absolutely sure one Discord message is handled
-       only once by this process.
-    */
-    if (processedMessages.has(message.id)) {
-        return;
-    }
-
-    processedMessages.add(message.id);
-
-    const args = message.content
+    const content = message.content
         .slice(PREFIX.length)
-        .trim()
-        .split(/\s+/);
+        .trim();
 
-    const command =
-        (args.shift() || "").toLowerCase();
+    if (!content) return;
 
-    if (!command) return;
+    const args = content.split(/\s+/);
+    const command = args.shift().toLowerCase();
 
     try {
 
-        /* =====================================================
-           PING
-        ===================================================== */
+        /* MARKET */
 
-        if (command === "ping") {
-            const sent = await message.reply("🏓 Pinging...");
-
-            const latency =
-                sent.createdTimestamp -
-                message.createdTimestamp;
-
-            await sent.edit(
-                `🏓 **Pong!**\n` +
-                `> Bot: **${latency}ms**\n` +
-                `> API: **${Math.round(client.ws.ping)}ms**`
-            );
-
-            return;
-        }
-
-        /* =====================================================
-           HELP
-        ===================================================== */
-
-        if (command === "help") {
-            await message.reply({
-                embeds: [createHelpEmbed()]
+        if (command === "market") {
+            return message.reply({
+                embeds: [await createMarketEmbed()]
             });
-            return;
         }
 
-        /* =====================================================
-           BALANCE
-        ===================================================== */
+        if (command === "info") {
+            const symbol = cleanSymbol(args[0]);
+
+            if (!symbol) {
+                return message.reply(
+                    "❌ Usage: `!info <asset>`"
+                );
+            }
+
+            const embed = await createInfoEmbed(symbol);
+
+            if (!embed) {
+                return message.reply(
+                    `❌ Asset \`${symbol}\` was not found.`
+                );
+            }
+
+            return message.reply({
+                embeds: [embed]
+            });
+        }
+
+        if (command === "history") {
+            const symbol = cleanSymbol(args[0]);
+
+            if (!symbol) {
+                return message.reply(
+                    "❌ Usage: `!history <asset>`"
+                );
+            }
+
+            const embed = await createHistoryEmbed(symbol);
+
+            if (!embed) {
+                return message.reply(
+                    `❌ Asset \`${symbol}\` was not found.`
+                );
+            }
+
+            return message.reply({
+                embeds: [embed]
+            });
+        }
+
+        /* BALANCE */
 
         if (command === "balance" || command === "bal") {
-            await message.reply({
+            return message.reply({
                 embeds: [
                     await createBalanceEmbed(
+                        message.author.id,
+                        message.author
+                    )
+                ]
+            });
+        }
+
+        /* PORTFOLIO */
+
+        if (
+            command === "portfolio" ||
+            command === "pf" ||
+            command === "port"
+        ) {
+            return message.reply({
+                embeds: [
+                    await createPortfolioEmbed(
                         message.author.id
                     )
                 ]
             });
-            return;
         }
 
-        /* =====================================================
-           DEPOSIT
-        ===================================================== */
+        /* DEPOSIT */
 
         if (command === "deposit" || command === "dep") {
-            const amount = Number(args[0]);
+            const amount = parseAmount(args[0]);
 
             if (!Number.isFinite(amount) || amount <= 0) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!deposit <amount>`"
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    "❌ Enter a valid amount."
+                );
             }
 
             const result = await db.deposit(
@@ -799,43 +766,25 @@ client.on("messageCreate", async message => {
             );
 
             if (!result.success) {
-                await message.reply({
-                    embeds: [errorEmbed(result.reason)]
-                });
-                return;
+                return message.reply(
+                    `❌ ${result.reason || "Deposit failed."}`
+                );
             }
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("🏦 Deposit Complete")
-                        .setDescription(
-                            `You deposited **${money(amount)}** into your bank.`
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
+            return message.reply(
+                `🏦 Deposited **${money(amount)}** ${CURRENCY}.`
+            );
         }
 
-        /* =====================================================
-           WITHDRAW
-        ===================================================== */
+        /* WITHDRAW */
 
         if (command === "withdraw" || command === "with") {
-            const amount = Number(args[0]);
+            const amount = parseAmount(args[0]);
 
             if (!Number.isFinite(amount) || amount <= 0) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!withdraw <amount>`"
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    "❌ Enter a valid amount."
+                );
             }
 
             const result = await db.withdraw(
@@ -844,738 +793,306 @@ client.on("messageCreate", async message => {
             );
 
             if (!result.success) {
-                await message.reply({
-                    embeds: [errorEmbed(result.reason)]
-                });
-                return;
+                return message.reply(
+                    `❌ ${result.reason || "Withdrawal failed."}`
+                );
             }
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("💵 Withdrawal Complete")
-                        .setDescription(
-                            `You withdrew **${money(amount)}** from your bank.`
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
+            return message.reply(
+                `💵 Withdrew **${money(amount)}** ${CURRENCY}.`
+            );
         }
 
-        /* =====================================================
-           MARKET
-        ===================================================== */
-
-        if (command === "market") {
-            const assets = await db.getAllAssets();
-
-            if (!assets.length) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "No market assets were found in the database."
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    createMarketEmbed(assets)
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           INFO
-        ===================================================== */
-
-        if (command === "info") {
-            const symbol = args[0];
-
-            if (!symbol) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!info <asset>`\nExample: `!info BTC`"
-                        )
-                    ]
-                });
-                return;
-            }
-
-            const asset = await db.getAsset(symbol);
-
-            if (!asset) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    await createInfoEmbed(asset)
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           HISTORY
-        ===================================================== */
-
-        if (command === "history") {
-            const symbol = args[0];
-
-            if (!symbol) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!history <asset>`"
-                        )
-                    ]
-                });
-                return;
-            }
-
-            const asset = await db.getAsset(symbol);
-
-            if (!asset) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    await createHistoryEmbed(asset)
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           BUY
-        ===================================================== */
+        /* BUY */
 
         if (command === "buy") {
-            const symbol = args[0];
-            const amountArg = args[1];
+            const symbol = cleanSymbol(args[0]);
+            const requested = String(args[1] || "");
 
-            if (!symbol || !amountArg) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!buy <asset> <amount>`\nExample: `!buy BTC 2`"
-                        )
-                    ]
-                });
-                return;
+            if (!symbol || !requested) {
+                return message.reply(
+                    "❌ Usage: `!buy <asset> <amount|all>`"
+                );
             }
 
-            const asset = await db.getAsset(symbol);
+            const asset = await findAsset(symbol);
 
             if (!asset) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    `❌ Asset \`${symbol}\` was not found.`
+                );
             }
+
+            const user = await db.getOrCreateUser(
+                message.author.id
+            );
 
             let amount;
 
-            if (amountArg.toLowerCase() === "all") {
-                const user =
-                    await db.getOrCreateUser(
-                        message.author.id
-                    );
-
-                const price = num(asset.price);
-
-                amount =
-                    Math.floor(
-                        (num(user.wallet) / price) *
-                        1000000
-                    ) / 1000000;
+            if (requested.toLowerCase() === "all") {
+                amount = Math.floor(
+                    num(user.wallet) / num(asset.price)
+                );
             } else {
-                amount = Number(amountArg);
+                amount = parseAmount(requested);
             }
 
             if (!Number.isFinite(amount) || amount <= 0) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Enter a valid positive amount."
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    `❌ You cannot buy that amount of ${symbol}.`
+                );
             }
 
             const result = await db.buyAsset(
                 message.author.id,
-                asset.symbol,
+                symbol,
                 amount
             );
 
             if (!result.success) {
-                await message.reply({
-                    embeds: [errorEmbed(result.reason)]
-                });
-                return;
+                return message.reply(
+                    `❌ ${result.reason || "Purchase failed."}`
+                );
             }
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle(
-                            `${assetIcon(asset.symbol)} Purchase Complete`
-                        )
-                        .setDescription(
-                            `You bought **${formatAmount(result.amount)} ${asset.symbol}**.`
-                        )
-                        .addFields(
-                            {
-                                name: "💵 Price",
-                                value: money(result.price),
-                                inline: true
-                            },
-                            {
-                                name: "💰 Total",
-                                value: money(result.total),
-                                inline: true
-                            },
-                            {
-                                name: "👛 Wallet",
-                                value: money(result.balance),
-                                inline: true
-                            }
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
+            return message.reply(
+                `🟢 Bought **${formatAmount(amount)} ${symbol}**\n` +
+                `💸 Cost: **${formatPrice(result.total)}** ${CURRENCY}\n` +
+                `💰 Wallet: **${formatPrice(result.balance)}** ${CURRENCY}`
+            );
         }
 
-        /* =====================================================
-           SELL
-        ===================================================== */
+        /* SELL */
 
         if (command === "sell") {
-            const symbol = args[0];
-            const amountArg = args[1];
+            const symbol = cleanSymbol(args[0]);
+            const requested = String(args[1] || "");
 
-            if (!symbol || !amountArg) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!sell <asset> <amount>`\nExample: `!sell BTC 2`"
-                        )
-                    ]
-                });
-                return;
+            if (!symbol || !requested) {
+                return message.reply(
+                    "❌ Usage: `!sell <asset> <amount|all>`"
+                );
             }
 
-            const asset = await db.getAsset(symbol);
+            const asset = await findAsset(symbol);
 
             if (!asset) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    `❌ Asset \`${symbol}\` was not found.`
+                );
             }
 
             let amount;
 
-            if (amountArg.toLowerCase() === "all") {
-                const portfolio =
-                    await db.getPortfolio(
-                        message.author.id
-                    );
+            if (requested.toLowerCase() === "all") {
+                const portfolio = await db.getPortfolio(
+                    message.author.id
+                );
 
-                const holding =
-                    portfolio.find(
-                        item =>
-                            cleanSymbol(item.symbol) ===
-                            cleanSymbol(asset.symbol)
-                    );
+                const holding = portfolio.find(
+                    item =>
+                        cleanSymbol(item.symbol) === symbol
+                );
 
-                if (!holding) {
-                    await message.reply({
-                        embeds: [
-                            errorEmbed(
-                                `You don't own any ${asset.symbol}.`
-                            )
-                        ]
-                    });
-                    return;
-                }
-
-                amount = num(holding.amount);
+                amount = holding
+                    ? num(holding.amount)
+                    : 0;
             } else {
-                amount = Number(amountArg);
+                amount = parseAmount(requested);
             }
 
             if (!Number.isFinite(amount) || amount <= 0) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Enter a valid positive amount."
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    `❌ You don't have enough ${symbol}.`
+                );
             }
 
             const result = await db.sellAsset(
                 message.author.id,
-                asset.symbol,
+                symbol,
                 amount
             );
 
             if (!result.success) {
-                await message.reply({
-                    embeds: [errorEmbed(result.reason)]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle(
-                            `${assetIcon(asset.symbol)} Sale Complete`
-                        )
-                        .setDescription(
-                            `You sold **${formatAmount(result.amount)} ${asset.symbol}**.`
-                        )
-                        .addFields(
-                            {
-                                name: "💵 Price",
-                                value: money(result.price),
-                                inline: true
-                            },
-                            {
-                                name: "💰 Received",
-                                value: money(result.total),
-                                inline: true
-                            },
-                            {
-                                name: "👛 Wallet",
-                                value: money(result.balance),
-                                inline: true
-                            }
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           PORTFOLIO
-        ===================================================== */
-
-        if (
-            command === "portfolio" ||
-            command === "pf" ||
-            command === "port"
-        ) {
-            await message.reply({
-                embeds: [
-                    await createPortfolioEmbed(
-                        message.author.id
-                    )
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           DAILY
-        ===================================================== */
-
-        if (command === "daily") {
-            const result =
-                await db.setDailyClaim(
-                    message.author.id
+                return message.reply(
+                    `❌ ${result.reason || "Sale failed."}`
                 );
-
-            if (!result.success) {
-                const remaining =
-                    Math.max(
-                        0,
-                        result.next - Date.now()
-                    );
-
-                const hours =
-                    Math.floor(
-                        remaining /
-                        (60 * 60 * 1000)
-                    );
-
-                const minutes =
-                    Math.floor(
-                        (remaining %
-                            (60 * 60 * 1000)) /
-                        (60 * 1000)
-                    );
-
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `You already claimed your daily reward.\nCome back in **${hours}h ${minutes}m**.`
-                        )
-                    ]
-                });
-                return;
             }
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("🎁 Daily Reward")
-                        .setDescription(
-                            `You received **${money(result.amount)}**!`
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
+            return message.reply(
+                `🔴 Sold **${formatAmount(amount)} ${symbol}**\n` +
+                `💵 Received: **${formatPrice(result.total)}** ${CURRENCY}\n` +
+                `💰 Wallet: **${formatPrice(result.balance)}** ${CURRENCY}`
+            );
         }
 
-        /* =====================================================
-           WEEKLY
-        ===================================================== */
-
-        if (command === "weekly") {
-            const result =
-                await db.setWeeklyClaim(
-                    message.author.id
-                );
-
-            if (!result.success) {
-                const remaining =
-                    Math.max(
-                        0,
-                        result.next - Date.now()
-                    );
-
-                const days =
-                    Math.floor(
-                        remaining /
-                        (24 * 60 * 60 * 1000)
-                    );
-
-                const hours =
-                    Math.floor(
-                        (remaining %
-                            (24 * 60 * 60 * 1000)) /
-                        (60 * 60 * 1000)
-                    );
-
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `You already claimed your weekly reward.\nCome back in **${days}d ${hours}h**.`
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("🎁 Weekly Reward")
-                        .setDescription(
-                            `You received **${money(result.amount)}**!`
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           LUCK
-        ===================================================== */
-
-        if (command === "luck") {
-            const result =
-                await db.claimLuck(
-                    message.author.id
-                );
-
-            if (!result.success) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "🍀 You already used your luck today."
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(
-                            result.won
-                                ? 0x57f287
-                                : 0xed4245
-                        )
-                        .setTitle(
-                            result.won
-                                ? "🍀 Lucky!"
-                                : "🍀 Unlucky..."
-                        )
-                        .setDescription(
-                            result.won
-                                ? `You won **${money(result.amount)}**!`
-                                : "You didn't win anything this time."
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           SHOP
-        ===================================================== */
+        /* SHOP */
 
         if (command === "shop") {
-            const subcommand =
-                String(args[0] || "").toLowerCase();
+            const sub = String(args[0] || "").toLowerCase();
 
             if (
-                subcommand === "buy" ||
-                subcommand === "purchase"
+                sub === "buy" ||
+                sub === "purchase"
             ) {
-                const item = args[1];
+                const item = args
+                    .slice(1)
+                    .join(" ")
+                    .trim()
+                    .toLowerCase();
 
                 if (!item) {
-                    await message.reply({
-                        embeds: [
-                            errorEmbed(
-                                "Usage: `!shop buy <item>`"
-                            )
-                        ]
-                    });
-                    return;
+                    return message.reply(
+                        "❌ Usage: `!shop buy <item>`"
+                    );
                 }
 
-                const result =
-                    await db.buyShopItem(
-                        message.author.id,
-                        item
-                    );
+                const result = await db.buyShopItem(
+                    message.author.id,
+                    item
+                );
 
                 if (!result.success) {
-                    await message.reply({
-                        embeds: [
-                            errorEmbed(result.reason)
-                        ]
-                    });
-                    return;
+                    return message.reply(
+                        `❌ ${result.reason || "Purchase failed."}`
+                    );
                 }
 
-                await message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(0x57f287)
-                            .setTitle("🛒 Purchase Complete")
-                            .setDescription(
-                                `You bought **${item.toLowerCase()}**.`
-                            )
-                            .addFields({
-                                name: "💰 Price",
-                                value: money(result.price),
-                                inline: true
-                            })
-                            .setTimestamp()
-                    ]
-                });
-
-                return;
+                return message.reply(
+                    `🛒 Purchased **${item}** for ` +
+                    `**${money(result.price)}** ${CURRENCY}.`
+                );
             }
 
             const items = await db.getShopItems();
 
+            if (!items.length) {
+                return message.reply(
+                    "🛒 Shop is empty."
+                );
+            }
+
             const lines = items.map(item =>
-                `🛍️ **${item.item}**\n> ${money(item.price)}`
+                `**${item.item}** — ${CURRENCY} **${money(item.price)}**`
             );
 
-            await message.reply({
+            return message.reply({
                 embeds: [
                     new EmbedBuilder()
-                        .setColor(0x5865f2)
-                        .setTitle("🛒 MarketBot Shop")
+                        .setColor(0x5865F2)
+                        .setTitle("🛒  SHOP")
                         .setDescription(
-                            lines.join("\n\n") +
-                            "\n\nUse `!shop buy <item>` to purchase."
+                            lines.join("\n")
                         )
+                        .setFooter({
+                            text: "Use !shop buy <item>"
+                        })
                         .setTimestamp()
                 ]
             });
-
-            return;
         }
 
-        /* =====================================================
-           INVENTORY
-        ===================================================== */
+        /* INVENTORY */
 
         if (
             command === "inventory" ||
             command === "inv"
         ) {
-            const inventory =
-                await db.getInventory(
-                    message.author.id
-                );
+            const inventory = await db.getInventory(
+                message.author.id
+            );
 
             if (!inventory.length) {
-                await message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(0x5865f2)
-                            .setTitle("🎒 Inventory")
-                            .setDescription(
-                                "Your inventory is empty."
-                            )
-                            .setTimestamp()
-                    ]
-                });
-                return;
+                return message.reply(
+                    "🎒 Your inventory is empty."
+                );
             }
 
-            await message.reply({
+            return message.reply({
                 embeds: [
                     new EmbedBuilder()
-                        .setColor(0x5865f2)
-                        .setTitle("🎒 Your Inventory")
+                        .setColor(0x5865F2)
+                        .setTitle("🎒  INVENTORY")
                         .setDescription(
-                            inventory
-                                .map(
-                                    item =>
-                                        `🧰 **${item.item}** × **${item.amount}**`
-                                )
-                                .join("\n")
+                            inventory.map(item =>
+                                `**${item.item}** × **${item.amount}**`
+                            ).join("\n")
                         )
                         .setTimestamp()
                 ]
             });
-
-            return;
         }
 
-        /* =====================================================
-           LEADERBOARD
-        ===================================================== */
+        /* TRANSACTIONS */
+
+        if (
+            command === "transactions" ||
+            command === "tx"
+        ) {
+            const transactions = await db.getTransactions(
+                message.author.id,
+                10
+            );
+
+            if (!transactions.length) {
+                return message.reply(
+                    "📜 No transactions yet."
+                );
+            }
+
+            const lines = transactions.map(tx =>
+                `**${String(tx.type).toUpperCase()}** • ${cleanSymbol(tx.symbol)}\n` +
+                `> ${formatAmount(tx.amount)} × ${formatPrice(tx.price)} = **${formatPrice(tx.total)}**`
+            );
+
+            return message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865F2)
+                        .setTitle("📜  TRANSACTIONS")
+                        .setDescription(
+                            lines.join("\n\n")
+                        )
+                        .setTimestamp()
+                ]
+            });
+        }
+
+        /* LEADERBOARD */
 
         if (
             command === "leaderboard" ||
             command === "lb"
         ) {
-            const leaderboard =
-                await db.getLeaderboard(10);
+            const leaderboard = await db.getLeaderboard(10);
 
             if (!leaderboard.length) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "There aren't any players yet."
-                        )
-                    ]
-                });
-                return;
-            }
-
-            const lines = [];
-
-            for (
-                let i = 0;
-                i < leaderboard.length;
-                i++
-            ) {
-                const player = leaderboard[i];
-
-                let username;
-
-                try {
-                    const user =
-                        await client.users.fetch(
-                            player.user_id
-                        );
-
-                    username = user.username;
-                } catch {
-                    username =
-                        `User ${player.user_id}`;
-                }
-
-                const medals = [
-                    "🥇",
-                    "🥈",
-                    "🥉"
-                ];
-
-                const rank =
-                    medals[i] ||
-                    `**#${i + 1}**`;
-
-                lines.push(
-                    `${rank} **${username}**\n` +
-                    `> Net Worth: **${compactMoney(player.netWorth)}**`
+                return message.reply(
+                    "🏆 No leaderboard data yet."
                 );
             }
 
-            await message.reply({
+            const lines = leaderboard.map(
+                (entry, index) => {
+                    const worth =
+                        entry.netWorth ??
+                        entry.net_worth ??
+                        0;
+
+                    return (
+                        `**${index + 1}.** <@${entry.user_id}> ` +
+                        `— **${money(worth)}** ${CURRENCY}`
+                    );
+                }
+            );
+
+            return message.reply({
                 embeds: [
                     new EmbedBuilder()
-                        .setColor(0xf1c40f)
-                        .setTitle("🏆 MarketBot Leaderboard")
+                        .setColor(0xFEE75C)
+                        .setTitle("🏆  NET WORTH LEADERBOARD")
                         .setDescription(
-                            lines.join("\n\n")
+                            lines.join("\n")
                         )
                         .setFooter({
                             text: "Ranked by total net worth"
@@ -1583,129 +1100,170 @@ client.on("messageCreate", async message => {
                         .setTimestamp()
                 ]
             });
-
-            return;
         }
 
-        /* =====================================================
-           TRANSACTIONS
-        ===================================================== */
+        /* DAILY */
 
-        if (
-            command === "transactions" ||
-            command === "tx"
-        ) {
-            const transactions =
-                await db.getTransactions(
-                    message.author.id,
-                    10
+        if (command === "daily") {
+            const result = await db.setDailyClaim(
+                message.author.id
+            );
+
+            if (!result.success) {
+                return message.reply(
+                    `⏳ Daily already claimed.\n` +
+                    `Try again in **${result.next || "later"}**.`
                 );
-
-            if (!transactions.length) {
-                await message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(0x5865f2)
-                            .setTitle("📜 Transactions")
-                            .setDescription(
-                                "You don't have any transactions yet."
-                            )
-                            .setTimestamp()
-                    ]
-                });
-                return;
             }
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x5865f2)
-                        .setTitle("📜 Recent Transactions")
-                        .setDescription(
-                            transactions
-                                .map(tx => {
-                                    const type =
-                                        String(tx.type)
-                                            .toUpperCase();
-
-                                    const icon =
-                                        type === "BUY"
-                                            ? "🟢"
-                                            : "🔴";
-
-                                    const action =
-                                        type === "BUY"
-                                            ? "Bought"
-                                            : "Sold";
-
-                                    return (
-                                        `${icon} **${action} ${formatAmount(tx.amount)} ${tx.symbol}**\n` +
-                                        `> ${money(tx.total)} @ ${money(tx.price)}`
-                                    );
-                                })
-                                .join("\n\n")
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
+            return message.reply(
+                `🎁 Daily reward: **${money(result.amount || 1000)}** ${CURRENCY}!`
+            );
         }
 
-        /* =====================================================
-           OWNER
-        ===================================================== */
+        /* WEEKLY */
+
+        if (command === "weekly") {
+            const result = await db.setWeeklyClaim(
+                message.author.id
+            );
+
+            if (!result.success) {
+                return message.reply(
+                    `⏳ Weekly already claimed.\n` +
+                    `Try again in **${result.next || "later"}**.`
+                );
+            }
+
+            return message.reply(
+                `🎁 Weekly reward: **${money(result.amount || 10000)}** ${CURRENCY}!`
+            );
+        }
+
+        /* LUCK */
+
+        if (command === "luck") {
+            const result = await db.claimLuck(
+                message.author.id
+            );
+
+            if (!result.success) {
+                return message.reply(
+                    `⏳ Luck already used today.\n` +
+                    `Try again in **${result.next || "later"}**.`
+                );
+            }
+
+            if (result.won) {
+                return message.reply(
+                    `🍀 **LUCKY!** You won **${money(result.amount || 0)}** ${CURRENCY}!`
+                );
+            }
+
+            return message.reply(
+                "🍀 You didn't win this time. Try again tomorrow!"
+            );
+        }
+
+        /* GIVE */
+
+        if (command === "give") {
+            if (!isStaff(message.author.id)) {
+                return message.reply(
+                    "❌ You don't have permission."
+                );
+            }
+
+            const target =
+                message.mentions.users.first();
+
+            const amount = parseAmount(
+                args[target ? 1 : 0]
+            );
+
+            if (!target || !Number.isFinite(amount) || amount <= 0) {
+                return message.reply(
+                    "❌ Usage: `!give @user <amount>`"
+                );
+            }
+
+            await db.getOrCreateUser(target.id);
+
+            const success = await db.addWallet(
+                target.id,
+                amount
+            );
+
+            if (!success) {
+                return message.reply(
+                    "❌ Failed to give money."
+                );
+            }
+
+            return message.reply(
+                `💸 Gave **${money(amount)}** ${CURRENCY} to ${target}.`
+            );
+        }
+
+        /* PING */
+
+        if (command === "ping") {
+            const sent = await message.reply(
+                "🏓 Checking..."
+            );
+
+            const latency =
+                sent.createdTimestamp -
+                message.createdTimestamp;
+
+            return sent.edit(
+                `🏓 **Pong!**\n` +
+                `Discord: **${latency}ms**\n` +
+                `API: **${client.ws.ping}ms**`
+            );
+        }
+
+        /* HELP */
+
+        if (command === "help") {
+            return message.reply({
+                embeds: [createHelpEmbed()]
+            });
+        }
+
+        /* OWNER */
 
         if (command === "owner") {
-            await message.reply({
+            return message.reply({
                 embeds: [
                     new EmbedBuilder()
-                        .setColor(0x5865f2)
-                        .setTitle("👑 MarketBot Ownership")
-                        .addFields(
-                            {
-                                name: "👑 Owners",
-                                value: OWNERS
-                                    .map(id => `<@${id}>`)
-                                    .join("\n"),
-                                inline: true
-                            },
-                            {
-                                name: "🛡️ Co-Owner",
-                                value: `<@${CO_OWNER}>`,
-                                inline: true
-                            }
+                        .setColor(0x5865F2)
+                        .setTitle("👑  MARKETBOT OWNER")
+                        .setDescription(
+                            `**Owners**\n${OWNERS.map(id => `<@${id}>`).join("\n")}\n\n` +
+                            `**Co-owner**\n<@${CO_OWNER}>`
                         )
                         .setTimestamp()
                 ]
             });
-
-            return;
         }
 
-        /* =====================================================
-           OWNER COMMANDS
-        ===================================================== */
+        /* OWNER COMMANDS */
 
         if (command === "ownercmds") {
-            if (!isStaff(message.author.id)) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "You don't have permission to use owner commands."
-                        )
-                    ]
-                });
-                return;
+            if (!isOwner(message.author.id)) {
+                return message.reply(
+                    "❌ Owner only."
+                );
             }
 
-            await message.reply({
+            return message.reply({
                 embeds: [
                     new EmbedBuilder()
-                        .setColor(0xedc531)
-                        .setTitle("👑 Owner Commands")
+                        .setColor(0xED4245)
+                        .setTitle("👑  OWNER COMMANDS")
                         .setDescription(
-                            "`!set <asset> <amount>+/-`\n" +
+                            "`!set <asset> <change>`\n" +
                             "`!resetmarket`\n" +
                             "`!give @user <amount>`\n" +
                             "`!resetbalance @user`\n" +
@@ -1714,365 +1272,143 @@ client.on("messageCreate", async message => {
                         .setTimestamp()
                 ]
             });
-
-            return;
         }
 
-        /* =====================================================
-           SET
-        ===================================================== */
+        /* SET */
 
         if (command === "set") {
-            if (!isStaff(message.author.id)) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "You don't have permission to use this command."
-                        )
-                    ]
-                });
-                return;
+            if (!isOwner(message.author.id)) {
+                return message.reply(
+                    "❌ Owner only."
+                );
             }
 
-            const symbol = args[0];
-            const changeArg = args[1];
+            const symbol = cleanSymbol(args[0]);
+            const targetChange = parseAmount(args[1]);
 
-            if (!symbol || !changeArg) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!set <asset> <amount>+` or `!set <asset> <amount>-`"
-                        )
-                    ]
-                });
-                return;
+            if (!symbol || !Number.isFinite(targetChange)) {
+                return message.reply(
+                    "❌ Usage: `!set <asset> <change>`"
+                );
             }
 
-            const asset = await db.getAsset(symbol);
+            const asset = await findAsset(symbol);
 
             if (!asset) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
-                        )
-                    ]
-                });
-                return;
-            }
-
-            const lastChar =
-                changeArg.slice(-1);
-
-            if (
-                lastChar !== "+" &&
-                lastChar !== "-"
-            ) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "The amount must end with `+` or `-`."
-                        )
-                    ]
-                });
-                return;
-            }
-
-            const amount =
-                Number(
-                    changeArg.slice(0, -1)
+                return message.reply(
+                    `❌ Asset \`${symbol}\` not found.`
                 );
-
-            if (!Number.isFinite(amount) || amount <= 0) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Enter a valid positive amount."
-                        )
-                    ]
-                });
-                return;
             }
 
-            const movement =
-                lastChar === "+"
-                    ? amount
-                    : -amount;
+            const difference =
+                targetChange - num(asset.change_percent);
 
-            const result =
-                await db.setAssetChange(
-                    asset.symbol,
-                    movement
-                );
-
-            if (!result.success) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(result.reason)
-                    ]
-                });
-                return;
-            }
-
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(
-                            movement >= 0
-                                ? 0x57f287
-                                : 0xed4245
-                        )
-                        .setTitle("🛠️ Market Modified")
-                        .setDescription(
-                            `${assetIcon(asset.symbol)} **${asset.symbol}** was manually adjusted.`
-                        )
-                        .addFields(
-                            {
-                                name: "Before",
-                                value:
-                                    `${money(result.oldPrice)}\n${percent(result.oldChange)}`,
-                                inline: true
-                            },
-                            {
-                                name: "After",
-                                value:
-                                    `${money(result.newPrice)}\n${percent(result.newChange)}`,
-                                inline: true
-                            },
-                            {
-                                name: "Adjustment",
-                                value:
-                                    `${movement >= 0 ? "+" : ""}${movement.toFixed(2)}%`,
-                                inline: true
-                            }
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           RESET MARKET
-        ===================================================== */
-
-        if (command === "resetmarket") {
-            if (!isStaff(message.author.id)) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "You don't have permission to use this command."
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await db.resetMarket();
-
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("🔄 Market Reset")
-                        .setDescription(
-                            "All assets were returned to their base prices."
-                        )
-                        .setTimestamp()
-                ]
-            });
-
-            return;
-        }
-
-        /* =====================================================
-           GIVE
-        ===================================================== */
-
-        if (command === "give") {
-            if (!isStaff(message.author.id)) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "You don't have permission to use this command."
-                        )
-                    ]
-                });
-                return;
-            }
-
-            const target =
-                message.mentions.users.first();
-
-            const amount =
-                Number(
-                    args[target ? 1 : 0]
-                );
-
-            if (
-                !target ||
-                !Number.isFinite(amount) ||
-                amount <= 0
-            ) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!give @user <amount>`"
-                        )
-                    ]
-                });
-                return;
-            }
-
-            await db.addWallet(
-                target.id,
-                amount
+            const result = await db.setAssetChange(
+                symbol,
+                difference
             );
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("💸 Money Given")
-                        .setDescription(
-                            `Gave **${money(amount)}** to ${target}.`
-                        )
-                        .setTimestamp()
-                ]
-            });
+            if (!result.success) {
+                return message.reply(
+                    "❌ Failed to change market."
+                );
+            }
 
-            return;
+            return message.reply(
+                `📊 **${symbol}** changed to **${percent(result.newChange)}**.`
+            );
         }
 
-        /* =====================================================
-           RESET BALANCE
-        ===================================================== */
+        /* RESET MARKET */
+
+        if (command === "resetmarket") {
+            if (!isOwner(message.author.id)) {
+                return message.reply(
+                    "❌ Owner only."
+                );
+            }
+
+            const result = await db.resetMarket();
+
+            if (!result.success) {
+                return message.reply(
+                    "❌ Failed to reset market."
+                );
+            }
+
+            return message.reply(
+                "🔄 Market reset successfully."
+            );
+        }
+
+        /* RESET BALANCE */
 
         if (command === "resetbalance") {
-            if (!isStaff(message.author.id)) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "You don't have permission to use this command."
-                        )
-                    ]
-                });
-                return;
+            if (!isOwner(message.author.id)) {
+                return message.reply(
+                    "❌ Owner only."
+                );
             }
 
             const target =
                 message.mentions.users.first();
 
             if (!target) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Usage: `!resetbalance @user`"
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    "❌ Usage: `!resetbalance @user`"
+                );
             }
 
-            await db.resetBalance(target.id);
+            const result = await db.resetBalance(
+                target.id
+            );
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0x57f287)
-                        .setTitle("♻️ Balance Reset")
-                        .setDescription(
-                            `${target}'s economy data has been reset.`
-                        )
-                        .setTimestamp()
-                ]
-            });
+            if (!result.success) {
+                return message.reply(
+                    `❌ ${result.reason || "Failed to reset balance."}`
+                );
+            }
 
-            return;
+            return message.reply(
+                `🔄 Reset ${target}'s balance.`
+            );
         }
 
-        /* =====================================================
-           RESET ALL
-        ===================================================== */
+        /* RESET ALL */
 
         if (command === "resetall") {
             if (!isOwner(message.author.id)) {
-                await message.reply({
-                    embeds: [
-                        errorEmbed(
-                            "Only the main owners can use this command."
-                        )
-                    ]
-                });
-                return;
+                return message.reply(
+                    "❌ Owner only."
+                );
             }
 
-            await db.resetAll();
+            const result = await db.resetAll();
 
-            await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setColor(0xed4245)
-                        .setTitle("⚠️ Economy Reset")
-                        .setDescription(
-                            "The entire MarketBot economy has been reset."
-                        )
-                        .setTimestamp()
-                ]
-            });
+            if (!result.success) {
+                return message.reply(
+                    "❌ Failed to reset economy."
+                );
+            }
 
-            return;
-        }
-
-        /* =====================================================
-           UNKNOWN COMMAND
-        ===================================================== */
-
-        await message.reply({
-            embeds: [
-                errorEmbed(
-                    `Unknown command \`!${command}\`.\nUse \`!help\` to see the available commands.`
-                )
-            ]
-        });
-
-    } catch (error) {
-
-        /*
-           THIS IS IMPORTANT:
-           The actual PostgreSQL error is now printed clearly
-           in Render logs instead of being hidden.
-        */
-
-        console.error("");
-        console.error("==========================================");
-        console.error("        MARKETBOT COMMAND ERROR");
-        console.error("==========================================");
-        console.error("Command:", command);
-        console.error("Message:", message.content);
-        console.error("User:", message.author.tag);
-        console.error("Error:", error);
-        console.error("Message:", error?.message);
-        console.error("Code:", error?.code);
-        console.error("Stack:", error?.stack);
-        console.error("==========================================");
-        console.error("");
-
-        try {
-            await message.reply({
-                embeds: [
-                    errorEmbed(
-                        "The command failed. Check the Render logs for the database error."
-                    )
-                ]
-            });
-        } catch (replyError) {
-            console.error(
-                "[ERROR REPLY FAILED]",
-                replyError
+            return message.reply(
+                "⚠️ **Entire virtual economy reset successfully.**"
             );
         }
+
+    } catch (error) {
+        console.error("\n==========================================");
+        console.error("COMMAND ERROR");
+        console.error("User:", message.author.tag);
+        console.error("Command:", message.content);
+        console.error(error?.stack || error);
+        console.error("==========================================\n");
+
+        try {
+            await message.reply(
+                "❌ Something went wrong while executing that command."
+            );
+        } catch {}
     }
 });
 
@@ -2081,80 +1417,58 @@ client.on("messageCreate", async message => {
 ========================================================= */
 
 client.once("clientReady", async () => {
-    console.log(
-        `✅ Logged in as ${client.user.tag}`
-    );
+    console.log(`✅ Logged in as ${client.user.tag}`);
+    console.log("📈 Market engine started.");
 
-    console.log(
-        "🔄 Initializing Supabase database..."
-    );
+    await updateMarket();
 
-    try {
-        await db.initDatabase();
-
-        databaseReady = true;
-
-        console.log(
-            "✅ Database ready."
-        );
-
-        await updateMarket();
-
-        if (marketInterval) {
-            clearInterval(marketInterval);
-        }
-
-        marketInterval = setInterval(
-            updateMarket,
-            30 * 1000
-        );
-
-        console.log(
-            "📈 Market engine started."
-        );
-
-    } catch (error) {
-        databaseReady = false;
-
-        console.error("");
-        console.error("==========================================");
-        console.error("      DATABASE INITIALIZATION FAILED");
-        console.error("==========================================");
-        console.error(error);
-        console.error("Message:", error?.message);
-        console.error("Code:", error?.code);
-        console.error("Stack:", error?.stack);
-        console.error("==========================================");
-        console.error("");
-    }
+    setInterval(updateMarket, 30 * 1000);
 });
 
 /* =========================================================
-   LOGIN
+   START
 ========================================================= */
 
-client.login(TOKEN);
+async function startBot() {
+    try {
+        if (!process.env.TOKEN) {
+            throw new Error("TOKEN is missing.");
+        }
 
-/* =========================================================
-   PROCESS ERRORS
-========================================================= */
+        if (!process.env.DATABASE_URL) {
+            throw new Error("DATABASE_URL is missing.");
+        }
 
-process.on(
-    "unhandledRejection",
-    error => {
-        console.error(
-            "[UNHANDLED REJECTION]",
-            error
-        );
+        console.log("🔄 Initializing Supabase database...");
+
+        await db.initDatabase();
+
+        console.log("✅ Database ready.");
+
+        await client.login(process.env.TOKEN);
+
+    } catch (error) {
+        console.error("\n==========================================");
+        console.error("BOT STARTUP FAILED");
+        console.error(error?.stack || error);
+        console.error("==========================================\n");
+
+        process.exit(1);
     }
-);
+}
 
-process.on(
-    "uncaughtException",
-    error => {
-        console.error(
-            "[UNCAUGHT EXCEPTION]",
-            error
-        );
-    }
-);
+process.on("unhandledRejection", error => {
+    console.error(
+        "UNHANDLED REJECTION:",
+        error?.stack || error
+    );
+});
+
+process.on("uncaughtException", error => {
+    console.error(
+        "UNCAUGHT EXCEPTION:",
+        error?.stack || error
+    );
+});
+
+startBot();
