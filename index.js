@@ -8,6 +8,30 @@ const {
 
 const db = require("./database");
 
+const PREFIX = "!";
+const CURRENCY = "🪙";
+
+const TOKEN = process.env.TOKEN;
+
+if (!TOKEN) {
+    throw new Error("TOKEN is missing from environment variables.");
+}
+
+/* =========================================================
+   OWNERS
+========================================================= */
+
+const OWNERS = [
+    "1410867769729351772",
+    "1300582883873787960"
+];
+
+const CO_OWNER = "1388444379743785071";
+
+/* =========================================================
+   CLIENT
+========================================================= */
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -16,15 +40,9 @@ const client = new Client({
     ]
 });
 
-const PREFIX = "!";
-const CURRENCY = "🪙";
-
-const OWNERS = [
-    "1410867769729351772",
-    "1300582883873787960"
-];
-
-const CO_OWNER = "1388444379743785071";
+/* =========================================================
+   ASSET ICONS
+========================================================= */
 
 const ASSET_ICONS = {
     BTC: "₿",
@@ -34,6 +52,7 @@ const ASSET_ICONS = {
     DOGE: "Ð",
     ADA: "₳",
     BNB: "◆",
+
     TSLA: "⚡",
     AAPL: "",
     NVDA: "◈",
@@ -54,104 +73,132 @@ function num(value) {
 }
 
 function money(value) {
-    return `$${num(value).toLocaleString("en-US", {
+    return `${CURRENCY} ${num(value).toLocaleString("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     })}`;
 }
 
+function compactMoney(value) {
+    const n = num(value);
+
+    if (n >= 1_000_000_000) {
+        return `${CURRENCY} ${(n / 1_000_000_000).toFixed(2)}B`;
+    }
+
+    if (n >= 1_000_000) {
+        return `${CURRENCY} ${(n / 1_000_000).toFixed(2)}M`;
+    }
+
+    if (n >= 1_000) {
+        return `${CURRENCY} ${(n / 1_000).toFixed(2)}K`;
+    }
+
+    return money(n);
+}
+
 function formatAmount(value) {
-    return num(value).toLocaleString("en-US", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2
+    const n = num(value);
+
+    if (Number.isInteger(n)) {
+        return n.toLocaleString("en-US");
+    }
+
+    return n.toLocaleString("en-US", {
+        maximumFractionDigits: 6
     });
 }
 
 function percent(value) {
     const n = num(value);
+
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
 function cleanSymbol(symbol) {
-    return String(symbol || "").trim().toUpperCase();
+    return String(symbol || "")
+        .trim()
+        .toUpperCase();
 }
 
 function assetIcon(symbol) {
     return ASSET_ICONS[cleanSymbol(symbol)] || "◆";
 }
 
-function findAsset(symbol) {
-    return db.getAsset(cleanSymbol(symbol));
+function findAsset(assets, symbol) {
+    const clean = cleanSymbol(symbol);
+
+    return assets.find(
+        asset => cleanSymbol(asset.symbol) === clean
+    );
 }
 
-function isOwner(id) {
-    return OWNERS.includes(id);
+function isOwner(userId) {
+    return OWNERS.includes(userId);
 }
 
-function isCoOwner(id) {
-    return id === CO_OWNER;
+function isCoOwner(userId) {
+    return userId === CO_OWNER;
 }
 
-function isStaff(id) {
-    return isOwner(id) || isCoOwner(id);
+function isStaff(userId) {
+    return isOwner(userId) || isCoOwner(userId);
 }
 
 function directionIcon(change) {
-    const n = num(change);
-
-    if (n > 0.005) return "🟢";
-    if (n < -0.005) return "🔴";
-    return "🟡";
+    if (num(change) > 0) return "📈";
+    if (num(change) < 0) return "📉";
+    return "➖";
 }
 
 function directionArrow(change) {
-    const n = num(change);
-
-    if (n > 0.005) return "▲";
-    if (n < -0.005) return "▼";
-    return "—";
+    if (num(change) > 0) return "▲";
+    if (num(change) < 0) return "▼";
+    return "•";
 }
 
 function directionWord(change) {
-    const n = num(change);
-
-    if (n > 0.005) return "RISING";
-    if (n < -0.005) return "FALLING";
-    return "UNCHANGED";
+    if (num(change) > 0) return "UP";
+    if (num(change) < 0) return "DOWN";
+    return "FLAT";
 }
 
-function trend(change) {
+function profitEmoji(value) {
+    if (num(value) > 0) return "🟢";
+    if (num(value) < 0) return "🔴";
+    return "⚪";
+}
+
+function trendText(change) {
     const n = num(change);
 
+    if (n >= 25) return "🔥 Extremely bullish";
     if (n >= 10) return "🚀 Strong bullish";
-    if (n > 2) return "📈 Bullish";
+    if (n >= 3) return "📈 Bullish";
     if (n > 0) return "↗️ Slightly bullish";
-    if (n <= -10) return "💥 Strong bearish";
-    if (n < -2) return "📉 Bearish";
+    if (n <= -25) return "💥 Extremely bearish";
+    if (n <= -10) return "📉 Strong bearish";
+    if (n <= -3) return "📉 Bearish";
     if (n < 0) return "↘️ Slightly bearish";
 
-    return "⏸️ Flat";
+    return "➖ Flat";
 }
 
 function recentMove(change) {
     const n = num(change);
 
-    if (n > 5) return "🔥 Heavy buying pressure";
-    if (n > 1) return "📈 Buyers pushing price up";
-    if (n > 0) return "↗️ Small upward movement";
-    if (n < -5) return "⚠️ Heavy selling pressure";
-    if (n < -1) return "📉 Sellers pushing price down";
-    if (n < 0) return "↘️ Small downward movement";
+    if (n > 0) return `▲ ${percent(n)}`;
+    if (n < 0) return `▼ ${percent(n)}`;
 
-    return "⏸️ Little movement";
+    return "• 0.00%";
 }
 
-function profitEmoji(value) {
-    const n = num(value);
+function shorten(text, max = 1024) {
+    const str = String(text || "");
 
-    if (n > 0) return "🟢";
-    if (n < 0) return "🔴";
-    return "🟡";
+    if (str.length <= max) return str;
+
+    return str.slice(0, max - 3) + "...";
 }
 
 /* =========================================================
@@ -159,552 +206,411 @@ function profitEmoji(value) {
 ========================================================= */
 
 function makeGraph(history) {
-    if (!history || history.length < 2) {
-        return "`No history yet`";
+    if (!history || history.length === 0) {
+        return "▁▁▁▁▁▁▁▁▁▁▁▁";
     }
 
-    const bars = [
-        "▁",
-        "▂",
-        "▃",
-        "▄",
-        "▅",
-        "▆",
-        "▇",
-        "█"
-    ];
+    const bars = "▁▂▃▄▅▆▇█";
 
-    let values = history
-        .map(x => num(x.price))
-        .filter(x => Number.isFinite(x));
-
-    if (values.length < 2) {
-        return "`No history yet`";
-    }
-
-    const maxBars = 24;
-
-    if (values.length > maxBars) {
-        const step =
-            (values.length - 1) /
-            (maxBars - 1);
-
-        const reduced = [];
-
-        for (let i = 0; i < maxBars; i++) {
-            reduced.push(
-                values[
-                    Math.round(i * step)
-                ]
-            );
-        }
-
-        values = reduced;
-    }
+    const values = history.map(item => num(item.price));
 
     const min = Math.min(...values);
     const max = Math.max(...values);
 
     if (max === min) {
-        return `\`${bars[3].repeat(values.length)}\``;
+        return "▄▄▄▄▄▄▄▄▄▄▄▄";
     }
 
-    const graph = values
+    return values
+        .slice(-24)
         .map(value => {
             const normalized =
-                (value - min) /
-                (max - min);
+                (value - min) / (max - min);
 
-            const index = Math.round(
-                normalized *
-                (bars.length - 1)
+            const index = Math.max(
+                0,
+                Math.min(
+                    bars.length - 1,
+                    Math.round(
+                        normalized * (bars.length - 1)
+                    )
+                )
             );
 
             return bars[index];
         })
         .join("");
-
-    return `\`${graph}\``;
 }
 
 /* =========================================================
-   MARKET
+   ERROR EMBED
 ========================================================= */
 
-function createMarketEmbed() {
-    const assets =
-        db.getAllAssets() || [];
-
-    const crypto =
-        assets.filter(
-            x =>
-                String(x.type)
-                    .toLowerCase() ===
-                "crypto"
-        );
-
-    const stocks =
-        assets.filter(
-            x =>
-                String(x.type)
-                    .toLowerCase() ===
-                "stock"
-        );
-
-    function buildList(list) {
-        if (!list.length) {
-            return "No assets available.";
-        }
-
-        return list
-            .map(asset => {
-                const change =
-                    num(asset.change_percent);
-
-                return (
-                    `${assetIcon(asset.symbol)} **${asset.symbol}**\n` +
-                    `> ${money(asset.price)}  ` +
-                    `${directionIcon(change)} **${percent(change)}** ${directionArrow(change)}`
-                );
-            })
-            .join("\n\n");
-    }
-
+function errorEmbed(message) {
     return new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setTitle("📊 MARKETBOT EXCHANGE")
-        .setDescription(
-            "### Live Virtual Market\n" +
-            "Prices update automatically.\n" +
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        .addFields(
-            {
-                name: "🪙 CRYPTO",
-                value: buildList(crypto),
-                inline: true
-            },
-            {
-                name: "📈 STOCKS",
-                value: buildList(stocks),
-                inline: true
-            },
-            {
-                name: "MARKET KEY",
-                value:
-                    "🟢 Rising  🔴 Falling  🟡 Unchanged\n" +
-                    "All prices are part of the virtual Discord economy.",
-                inline: false
-            }
-        )
-        .setFooter({
-            text: "MarketBot • Virtual economy"
-        })
+        .setColor(0xff3b3b)
+        .setTitle("❌ Something went wrong")
+        .setDescription(message)
         .setTimestamp();
 }
 
 /* =========================================================
-   INFO
+   MARKET EMBED
 ========================================================= */
 
-function createInfoEmbed(symbol) {
-    const asset =
-        findAsset(symbol);
+function createMarketEmbed(assets) {
+    const crypto = assets.filter(
+        asset => String(asset.type).toLowerCase() === "crypto"
+    );
 
-    if (!asset) {
-        return new EmbedBuilder()
-            .setColor(0xED4245)
-            .setTitle("❌ ASSET NOT FOUND")
-            .setDescription(
-                `I couldn't find **${cleanSymbol(symbol)}**.\n\n` +
-                "Use `!market` to see available assets."
-            );
+    const stocks = assets.filter(
+        asset => String(asset.type).toLowerCase() === "stock"
+    );
+
+    function formatAsset(asset) {
+        const change = num(asset.change_percent);
+
+        return [
+            `${assetIcon(asset.symbol)} **${asset.symbol}**`,
+            `> ${money(asset.price)}  ${directionArrow(change)} **${percent(change)}**`
+        ].join("\n");
     }
 
-    const history =
-        db.getMarketHistory(
-            asset.symbol,
-            40
-        ) || [];
+    const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle("📊 Market Overview")
+        .setDescription(
+            "Live virtual market prices. Prices automatically move over time."
+        )
+        .setTimestamp()
+        .setFooter({
+            text: "MarketBot • Virtual Economy"
+        });
 
-    const price =
-        num(asset.price);
+    if (crypto.length) {
+        embed.addFields({
+            name: "🪙 CRYPTO",
+            value: crypto
+                .map(formatAsset)
+                .join("\n\n"),
+            inline: false
+        });
+    }
 
-    const base =
-        num(asset.base_price);
+    if (stocks.length) {
+        embed.addFields({
+            name: "📈 STOCKS",
+            value: stocks
+                .map(formatAsset)
+                .join("\n\n"),
+            inline: false
+        });
+    }
 
-    const change =
-        num(asset.change_percent);
+    return embed;
+}
 
-    const difference =
-        price - base;
+/* =========================================================
+   INFO EMBED
+========================================================= */
 
-    const prices =
-        history.length
-            ? history.map(
-                x => num(x.price)
-            )
-            : [price];
+async function createInfoEmbed(asset) {
+    const history = await db.getMarketHistory(
+        asset.symbol,
+        40
+    );
 
-    const high =
-        Math.max(...prices);
+    const graph = makeGraph(history);
 
-    const low =
-        Math.min(...prices);
+    const values = history.length
+        ? history.map(item => num(item.price))
+        : [num(asset.price)];
+
+    const high = Math.max(...values);
+    const low = Math.min(...values);
+
+    const change = num(asset.change_percent);
 
     return new EmbedBuilder()
         .setColor(
             change >= 0
-                ? 0x57F287
-                : 0xED4245
+                ? 0x57f287
+                : 0xed4245
         )
         .setTitle(
-            `${assetIcon(asset.symbol)} ${asset.symbol} MARKET`
+            `${assetIcon(asset.symbol)} ${asset.name} (${asset.symbol})`
         )
         .setDescription(
-            `**${asset.name}**\n\n` +
-            `# ${money(price)}\n` +
-            `${directionIcon(change)} **${percent(change)}** ` +
-            `${directionArrow(change)} **${directionWord(change)}**\n\n` +
-            `${makeGraph(history)}`
+            `### ${money(asset.price)}\n` +
+            `${directionIcon(change)} **${percent(change)}** • ${directionWord(change)}`
         )
         .addFields(
             {
-                name: "📊 TREND",
-                value: trend(change),
+                name: "📊 PRICE CHART",
+                value: `\`${graph}\``,
+                inline: false
+            },
+            {
+                name: "📈 Market Change",
+                value: `**${percent(change)}**`,
                 inline: true
             },
             {
-                name: "💵 BASE",
-                value: money(base),
+                name: "🎯 Trend",
+                value: trendText(change),
                 inline: true
             },
             {
-                name: "💰 CHANGE",
-                value:
-                    `${difference >= 0 ? "+" : "-"}${money(Math.abs(difference))}`,
+                name: "💵 Base Price",
+                value: money(asset.base_price),
                 inline: true
             },
             {
-                name: "📈 HIGH",
+                name: "🔺 High",
                 value: money(high),
                 inline: true
             },
             {
-                name: "📉 LOW",
+                name: "🔻 Low",
                 value: money(low),
                 inline: true
             },
             {
-                name: "⚡ MOVEMENT",
+                name: "⚡ Current Move",
                 value: recentMove(change),
                 inline: true
             }
         )
         .setFooter({
-            text:
-                `MarketBot • ${asset.symbol} • Live virtual market`
+            text: `MarketBot • ${asset.symbol}`
         })
         .setTimestamp();
 }
 
 /* =========================================================
-   HISTORY
+   HISTORY EMBED
 ========================================================= */
 
-function createHistoryEmbed(symbol) {
-    const asset =
-        findAsset(symbol);
+async function createHistoryEmbed(asset) {
+    const history = await db.getMarketHistory(
+        asset.symbol,
+        40
+    );
 
-    if (!asset) {
+    if (!history.length) {
         return new EmbedBuilder()
-            .setColor(0xED4245)
-            .setTitle("❌ ASSET NOT FOUND")
-            .setDescription(
-                `I couldn't find **${cleanSymbol(symbol)}**.`
-            );
-    }
-
-    const history =
-        db.getMarketHistory(
-            asset.symbol,
-            40
-        ) || [];
-
-    if (history.length < 2) {
-        return new EmbedBuilder()
-            .setColor(0xFEE75C)
+            .setColor(0x5865f2)
             .setTitle(
-                `${assetIcon(asset.symbol)} ${asset.symbol} HISTORY`
+                `${assetIcon(asset.symbol)} ${asset.name} History`
             )
             .setDescription(
-                "Not enough history yet."
-            );
+                "There isn't enough historical market data yet."
+            )
+            .addFields({
+                name: "Current Price",
+                value: money(asset.price),
+                inline: true
+            })
+            .setTimestamp();
     }
 
-    const prices =
-        history.map(
-            x => num(x.price)
-        );
+    const values = history.map(
+        item => num(item.price)
+    );
 
-    const first =
-        prices[0];
-
-    const current =
-        prices[prices.length - 1];
-
-    const high =
-        Math.max(...prices);
-
-    const low =
-        Math.min(...prices);
+    const start = values[0];
+    const current = values[values.length - 1];
+    const high = Math.max(...values);
+    const low = Math.min(...values);
 
     const movement =
-        first > 0
-            ? ((current - first) / first) * 100
-            : 0;
+        start === 0
+            ? 0
+            : ((current - start) / start) * 100;
 
     return new EmbedBuilder()
         .setColor(
             movement >= 0
-                ? 0x57F287
-                : 0xED4245
+                ? 0x57f287
+                : 0xed4245
         )
         .setTitle(
-            `${assetIcon(asset.symbol)} ${asset.symbol} PRICE HISTORY`
+            `📜 ${asset.name} (${asset.symbol}) History`
         )
         .setDescription(
-            `**${asset.name}**\n\n` +
-            `${makeGraph(history)}\n\n` +
-            `${directionIcon(movement)} **${percent(movement)}** over displayed history`
+            `### ${directionIcon(movement)} ${percent(movement)}\n` +
+            `\`${makeGraph(history)}\``
         )
         .addFields(
             {
-                name: "START",
-                value: money(first),
+                name: "◀ Start",
+                value: money(start),
                 inline: true
             },
             {
-                name: "CURRENT",
+                name: "● Current",
                 value: money(current),
                 inline: true
             },
             {
-                name: "HIGH",
-                value: money(high),
-                inline: true
-            },
-            {
-                name: "LOW",
-                value: money(low),
-                inline: true
-            },
-            {
-                name: "MOVEMENT",
+                name: "▶ Movement",
                 value: percent(movement),
                 inline: true
             },
             {
-                name: "DATA POINTS",
-                value: String(history.length),
+                name: "🔺 High",
+                value: money(high),
+                inline: true
+            },
+            {
+                name: "🔻 Low",
+                value: money(low),
+                inline: true
+            },
+            {
+                name: "📊 Data Points",
+                value: `${history.length}`,
                 inline: true
             }
         )
         .setFooter({
-            text:
-                `MarketBot • ${asset.symbol}`
+            text: `MarketBot • Historical data for ${asset.symbol}`
         })
         .setTimestamp();
 }
 
 /* =========================================================
-   BALANCE
+   BALANCE EMBED
 ========================================================= */
 
-function createBalanceEmbed(
-    userId,
-    user
-) {
-    const wallet =
-        num(user.wallet);
+async function createBalanceEmbed(userId, user) {
+    const portfolio = await db.getPortfolio(userId);
 
-    const bank =
-        num(user.bank);
-
-    const portfolio =
-        db.getPortfolio(userId) || [];
-
-    const portfolioValue =
-        portfolio.reduce(
-            (sum, item) =>
-                sum + num(item.value),
-            0
-        );
+    const investments = portfolio.reduce(
+        (sum, item) =>
+            sum + num(item.value),
+        0
+    );
 
     const netWorth =
-        wallet +
-        bank +
-        portfolioValue;
+        num(user.wallet) +
+        num(user.bank) +
+        investments;
 
     return new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setTitle("💳 YOUR FINANCES")
+        .setColor(0x5865f2)
+        .setTitle("💳 Your Balance")
         .setDescription(
-            `Financial overview for <@${userId}>`
+            "Your complete MarketBot financial overview."
         )
         .addFields(
             {
-                name: "👛 WALLET",
-                value:
-                    `${CURRENCY} **${money(wallet)}**`,
+                name: "👛 Wallet",
+                value: `### ${money(user.wallet)}`,
                 inline: true
             },
             {
-                name: "🏦 BANK",
-                value:
-                    `${CURRENCY} **${money(bank)}**`,
+                name: "🏦 Bank",
+                value: `### ${money(user.bank)}`,
                 inline: true
             },
             {
-                name: "📈 INVESTMENTS",
-                value:
-                    `${CURRENCY} **${money(portfolioValue)}**`,
+                name: "📈 Investments",
+                value: `### ${money(investments)}`,
                 inline: true
             },
             {
-                name: "💎 NET WORTH",
-                value:
-                    `${CURRENCY} **${money(netWorth)}**`,
+                name: "💎 Net Worth",
+                value: `### ${money(netWorth)}`,
                 inline: false
             }
         )
         .setFooter({
-            text:
-                "MarketBot • Virtual economy"
+            text: "MarketBot • Virtual Economy"
         })
         .setTimestamp();
 }
 
 /* =========================================================
-   PORTFOLIO
+   PORTFOLIO EMBED
 ========================================================= */
 
-function createPortfolioEmbed(
-    userId
-) {
-    const portfolio =
-        db.getPortfolio(userId) || [];
+async function createPortfolioEmbed(userId) {
+    const portfolio = await db.getPortfolio(userId);
 
     if (!portfolio.length) {
         return new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle(
-                "📈 YOUR PORTFOLIO"
-            )
+            .setColor(0x5865f2)
+            .setTitle("📁 Your Portfolio")
             .setDescription(
                 "You don't own any assets yet.\n\n" +
-                "Try `!buy BTC 1`."
-            );
+                "Use `!buy BTC 1` to start investing."
+            )
+            .setTimestamp();
     }
 
     let totalInvested = 0;
-    let totalCurrentValue = 0;
+    let totalValue = 0;
 
-    const embed =
-        new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle(
-                "📈 YOUR PORTFOLIO"
-            )
-            .setDescription(
-                `Investment overview for <@${userId}>\n` +
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            );
-
-    for (const item of portfolio) {
-        const amount =
-            num(item.amount);
-
-        const averagePrice =
-            num(item.average_price);
-
-        const currentPrice =
-            num(item.price);
+    const lines = portfolio.map(item => {
+        const amount = num(item.amount);
+        const average = num(item.average_price);
+        const currentPrice = num(item.price);
+        const value = num(item.value);
 
         const invested =
-            amount * averagePrice;
-
-        const currentValue =
-            num(item.value) ||
-            amount * currentPrice;
+            amount * average;
 
         const pnl =
-            currentValue -
-            invested;
-
-        const pnlPercent =
-            invested > 0
-                ? (pnl / invested) * 100
-                : 0;
+            value - invested;
 
         totalInvested += invested;
-        totalCurrentValue += currentValue;
+        totalValue += value;
 
-        embed.addFields({
-            name:
-                `${assetIcon(item.symbol)} ${item.symbol} • ${item.name || item.symbol}`,
-            value:
-                `📦 **Amount:** ${formatAmount(amount)}\n` +
-                `💵 **Invested:** ${money(invested)}\n` +
-                `🏷️ **Current Sell Price:** ${money(currentPrice)}\n` +
-                `💰 **Current Value:** ${money(currentValue)}\n` +
-                `${profitEmoji(pnl)} **P/L:** ` +
-                `${pnl >= 0 ? "+" : ""}${money(pnl)} ` +
-                `(${pnl >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)`,
-            inline: false
-        });
-    }
-
-    const totalPnl =
-        totalCurrentValue -
-        totalInvested;
-
-    const totalPnlPercent =
-        totalInvested > 0
-            ? (totalPnl / totalInvested) * 100
-            : 0;
-
-    embed.addFields(
-        {
-            name: "📦 TOTAL INVESTED",
-            value:
-                `${CURRENCY} **${money(totalInvested)}**`,
-            inline: true
-        },
-        {
-            name: "💰 CURRENT VALUE",
-            value:
-                `${CURRENCY} **${money(totalCurrentValue)}**`,
-            inline: true
-        },
-        {
-            name:
-                `${profitEmoji(totalPnl)} TOTAL P/L`,
-            value:
-                `${totalPnl >= 0 ? "+" : ""}` +
-                `${money(totalPnl)} ` +
-                `(${totalPnl >= 0 ? "+" : ""}` +
-                `${totalPnlPercent.toFixed(2)}%)`,
-            inline: true
-        }
-    );
-
-    embed.setFooter({
-        text:
-            "MarketBot • Current sell price uses the live market"
+        return [
+            `${assetIcon(item.symbol)} **${item.symbol}**`,
+            `> Amount: **${formatAmount(amount)}**`,
+            `> Current: **${money(currentPrice)}**`,
+            `> Value: **${money(value)}**`,
+            `> P/L: ${profitEmoji(pnl)} **${money(pnl)}**`
+        ].join("\n");
     });
 
-    return embed;
+    const totalPnl =
+        totalValue - totalInvested;
+
+    return new EmbedBuilder()
+        .setColor(
+            totalPnl >= 0
+                ? 0x57f287
+                : 0xed4245
+        )
+        .setTitle("📁 Your Portfolio")
+        .setDescription(
+            lines.join("\n\n")
+        )
+        .addFields(
+            {
+                name: "💰 Total Invested",
+                value: money(totalInvested),
+                inline: true
+            },
+            {
+                name: "📊 Current Value",
+                value: money(totalValue),
+                inline: true
+            },
+            {
+                name: "📈 Total P/L",
+                value:
+                    `${profitEmoji(totalPnl)} ${money(totalPnl)}`,
+                inline: true
+            }
+        )
+        .setFooter({
+            text: "MarketBot • Portfolio"
+        })
+        .setTimestamp();
 }
 
 /* =========================================================
@@ -713,1311 +619,1628 @@ function createPortfolioEmbed(
 
 function createHelpEmbed() {
     return new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setTitle(
-            "📚 MARKETBOT COMMANDS"
-        )
+        .setColor(0x5865f2)
+        .setTitle("📖 MarketBot Commands")
         .setDescription(
-            "Everything you need to use MarketBot.\n" +
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            "Everything you need to use the virtual economy."
         )
         .addFields(
             {
                 name: "💳 FINANCES",
                 value:
                     "`!balance` — View your balance\n" +
-                    "`!deposit <amount>` — Deposit money\n" +
-                    "`!withdraw <amount>` — Withdraw money\n" +
-                    "`!portfolio` — View your investments",
-                inline: false
+                    "`!deposit <amount>` — Move wallet → bank\n" +
+                    "`!withdraw <amount>` — Move bank → wallet\n" +
+                    "`!portfolio` — View your investments"
             },
             {
-                name: "📈 MARKET",
+                name: "📊 MARKET",
                 value:
                     "`!market` — View all assets\n" +
                     "`!info <asset>` — Detailed asset information\n" +
-                    "`!history <asset>` — View price history",
-                inline: false
+                    "`!history <asset>` — View price history"
             },
             {
-                name: "💱 TRADING",
+                name: "💹 TRADING",
                 value:
                     "`!buy <asset> <amount>` — Buy an asset\n" +
-                    "`!sell <asset> <amount>` — Sell an asset",
-                inline: false
+                    "`!sell <asset> <amount>` — Sell an asset\n" +
+                    "`!buy <asset> all` — Buy with all wallet money\n" +
+                    "`!sell <asset> all` — Sell all owned"
             },
             {
                 name: "🎁 REWARDS",
                 value:
-                    "`!daily` — Daily reward\n" +
-                    "`!weekly` — Weekly reward\n" +
-                    "`!luck` — Try your luck",
-                inline: false
+                    "`!daily` — Claim daily reward\n" +
+                    "`!weekly` — Claim weekly reward\n" +
+                    "`!luck` — Try your luck"
             },
             {
                 name: "🛒 SHOP",
                 value:
                     "`!shop` — View shop\n" +
-                    "`!shop buy <item>` — Purchase an item\n" +
-                    "`!inventory` — View inventory",
-                inline: false
+                    "`!shop buy <item>` — Buy a shop item\n" +
+                    "`!inventory` — View your items"
             },
             {
                 name: "🏆 OTHER",
                 value:
-                    "`!leaderboard` — View richest users\n" +
-                    "`!transactions` — View your trades\n" +
-                    "`!owner` — View bot owner information\n" +
-                    "`!ping` — Check bot latency",
-                inline: false
+                    "`!leaderboard` — Top players\n" +
+                    "`!transactions` — Recent transactions\n" +
+                    "`!ping` — Bot latency\n" +
+                    "`!owner` — Bot ownership"
             }
         )
         .setFooter({
-            text:
-                "MarketBot • Virtual economy"
-        });
+            text: "MarketBot • Virtual Economy"
+        })
+        .setTimestamp();
 }
 
 /* =========================================================
-   MARKET ENGINE
+   MARKET UPDATE
 ========================================================= */
 
-function updateMarket() {
-    const assets =
-        db.getAllAssets() || [];
+async function updateMarket() {
+    try {
+        const assets = await db.getAllAssets();
 
-    for (const asset of assets) {
-        const movement =
-            (Math.random() * 3.5 + 0.5) *
-            (
-                Math.random() < 0.5
-                    ? -1
-                    : 1
-            );
+        for (const asset of assets) {
+            const movement =
+                (Math.random() * 3.5 + 0.5) *
+                (Math.random() < 0.5 ? -1 : 1);
 
-        const result =
-            db.setAssetChange(
+            await db.setAssetChange(
                 asset.symbol,
                 movement
             );
-
-        if (result?.success) {
-            console.log(
-                `[MARKET] ${asset.symbol}: ` +
-                `${percent(result.oldChange)} -> ` +
-                `${percent(result.newChange)}`
-            );
         }
+
+        console.log(
+            `[MARKET] Updated ${assets.length} assets.`
+        );
+    } catch (error) {
+        console.error(
+            "[MARKET UPDATE ERROR]",
+            error
+        );
     }
 }
 
 /* =========================================================
-   COMMAND HANDLER
+   MESSAGE HANDLER
 ========================================================= */
 
-client.on(
-    "messageCreate",
-    async message => {
-        try {
-            if (message.author.bot) {
-                return;
-            }
-
-            if (
-                !message.content.startsWith(
-                    PREFIX
-                )
-            ) {
-                return;
-            }
-
-            const args =
-                message.content
-                    .slice(PREFIX.length)
-                    .trim()
-                    .split(/\s+/);
-
-            const command =
-                String(
-                    args.shift() || ""
-                ).toLowerCase();
-
-            if (!command) {
-                return;
-            }
-
-            const userId =
-                message.author.id;
-
-            /* MARKET */
-
-            if (command === "market") {
-                return message.reply({
-                    embeds: [
-                        createMarketEmbed()
-                    ]
-                });
-            }
-
-            if (command === "info") {
-                const symbol =
-                    cleanSymbol(args[0]);
-
-                if (!symbol) {
-                    return message.reply(
-                        "❌ Usage: `!info BTC`"
-                    );
-                }
-
-                return message.reply({
-                    embeds: [
-                        createInfoEmbed(symbol)
-                    ]
-                });
-            }
-
-            if (command === "history") {
-                const symbol =
-                    cleanSymbol(args[0]);
-
-                if (!symbol) {
-                    return message.reply(
-                        "❌ Usage: `!history BTC`"
-                    );
-                }
-
-                return message.reply({
-                    embeds: [
-                        createHistoryEmbed(symbol)
-                    ]
-                });
-            }
-
-            /* BALANCE */
-
-            if (
-                command === "balance" ||
-                command === "bal"
-            ) {
-                const user =
-                    db.getOrCreateUser(
-                        userId
-                    );
-
-                return message.reply({
-                    embeds: [
-                        createBalanceEmbed(
-                            userId,
-                            user
-                        )
-                    ]
-                });
-            }
-
-            /* PORTFOLIO */
-
-            if (
-                command === "portfolio" ||
-                command === "pf"
-            ) {
-                return message.reply({
-                    embeds: [
-                        createPortfolioEmbed(
-                            userId
-                        )
-                    ]
-                });
-            }
-
-            /* BUY */
-
-            if (command === "buy") {
-                const symbol =
-                    cleanSymbol(args[0]);
-
-                const amountArg =
-                    String(
-                        args[1] || ""
-                    );
-
-                if (
-                    !symbol ||
-                    !amountArg
-                ) {
-                    return message.reply(
-                        "❌ Usage: `!buy BTC 1`"
-                    );
-                }
-
-                const asset =
-                    findAsset(symbol);
-
-                if (!asset) {
-                    return message.reply(
-                        `❌ **${symbol}** is not a valid asset.`
-                    );
-                }
-
-                const user =
-                    db.getOrCreateUser(
-                        userId
-                    );
-
-                let amount;
-
-                /* Hidden but working: !buy BTC all */
-
-                if (
-                    amountArg.toLowerCase() ===
-                    "all"
-                ) {
-                    amount =
-                        Math.floor(
-                            num(user.wallet) /
-                            num(asset.price)
-                        );
-
-                    if (amount <= 0) {
-                        return message.reply(
-                            `❌ You don't have enough ${CURRENCY} to buy **${symbol}**.`
-                        );
-                    }
-                } else {
-                    amount =
-                        Number(amountArg);
-
-                    if (
-                        !Number.isFinite(
-                            amount
-                        ) ||
-                        amount <= 0
-                    ) {
-                        return message.reply(
-                            "❌ Enter a valid amount."
-                        );
-                    }
-
-                    amount =
-                        Math.round(
-                            amount * 100
-                        ) / 100;
-                }
-
-                const result =
-                    db.buyAsset(
-                        userId,
-                        symbol,
-                        amount
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        `❌ ${result.reason || "Purchase failed."}`
-                    );
-                }
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0x57F287
-                            )
-                            .setTitle(
-                                "✅ PURCHASE COMPLETE"
-                            )
-                            .setDescription(
-                                `${assetIcon(symbol)} **${symbol}** was added to your portfolio.`
-                            )
-                            .addFields(
-                                {
-                                    name: "📦 Amount",
-                                    value:
-                                        formatAmount(
-                                            result.amount
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name: "🏷️ Price",
-                                    value:
-                                        money(
-                                            result.price
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name: "💸 Total",
-                                    value:
-                                        money(
-                                            result.total
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name: "👛 Remaining",
-                                    value:
-                                        `${CURRENCY} ${money(result.balance)}`,
-                                    inline: false
-                                }
-                            )
-                            .setFooter({
-                                text:
-                                    "MarketBot • Virtual economy"
-                            })
-                            .setTimestamp()
-                    ]
-                });
-            }
-
-            /* SELL */
-
-            if (command === "sell") {
-                const symbol =
-                    cleanSymbol(args[0]);
-
-                const amountArg =
-                    String(
-                        args[1] || ""
-                    );
-
-                if (
-                    !symbol ||
-                    !amountArg
-                ) {
-                    return message.reply(
-                        "❌ Usage: `!sell BTC 1`"
-                    );
-                }
-
-                const asset =
-                    findAsset(symbol);
-
-                if (!asset) {
-                    return message.reply(
-                        `❌ **${symbol}** is not a valid asset.`
-                    );
-                }
-
-                let amount;
-
-                /* Hidden but working: !sell BTC all */
-
-                if (
-                    amountArg.toLowerCase() ===
-                    "all"
-                ) {
-                    const portfolio =
-                        db.getPortfolio(
-                            userId
-                        ) || [];
-
-                    const holding =
-                        portfolio.find(
-                            x =>
-                                cleanSymbol(
-                                    x.symbol
-                                ) === symbol &&
-                                num(x.amount) > 0
-                        );
-
-                    if (!holding) {
-                        return message.reply(
-                            `❌ You don't own any **${symbol}**.`
-                        );
-                    }
-
-                    amount =
-                        num(
-                            holding.amount
-                        );
-                } else {
-                    amount =
-                        Number(amountArg);
-
-                    if (
-                        !Number.isFinite(
-                            amount
-                        ) ||
-                        amount <= 0
-                    ) {
-                        return message.reply(
-                            "❌ Enter a valid amount."
-                        );
-                    }
-
-                    amount =
-                        Math.round(
-                            amount * 100
-                        ) / 100;
-                }
-
-                const result =
-                    db.sellAsset(
-                        userId,
-                        symbol,
-                        amount
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        `❌ ${result.reason || "Sale failed."}`
-                    );
-                }
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0x57F287
-                            )
-                            .setTitle(
-                                "✅ SALE COMPLETE"
-                            )
-                            .setDescription(
-                                `${assetIcon(symbol)} **${symbol}** was sold.`
-                            )
-                            .addFields(
-                                {
-                                    name: "📦 Amount",
-                                    value:
-                                        formatAmount(
-                                            result.amount
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name: "🏷️ Sell Price",
-                                    value:
-                                        money(
-                                            result.price
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name: "💰 Received",
-                                    value:
-                                        `${CURRENCY} ${money(result.total)}`,
-                                    inline: true
-                                },
-                                {
-                                    name: "👛 New Balance",
-                                    value:
-                                        `${CURRENCY} ${money(result.balance)}`,
-                                    inline: false
-                                }
-                            )
-                            .setFooter({
-                                text:
-                                    "MarketBot • Virtual economy"
-                            })
-                            .setTimestamp()
-                    ]
-                });
-            }
-
-            /* DEPOSIT
-               !dep ALSO WORKS BUT IS HIDDEN FROM HELP */
-
-            if (
-                command === "deposit" ||
-                command === "dep"
-            ) {
-                const amount =
-                    Number(args[0]);
-
-                if (
-                    !Number.isFinite(
-                        amount
-                    ) ||
-                    amount <= 0
-                ) {
-                    return message.reply(
-                        "❌ Usage: `!deposit <amount>`"
-                    );
-                }
-
-                const result =
-                    db.deposit(
-                        userId,
-                        amount
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        `❌ ${result.reason}`
-                    );
-                }
-
-                return message.reply(
-                    `🏦 Deposited ${CURRENCY} **${money(amount)}** into your bank.`
-                );
-            }
-
-            /* WITHDRAW
-               !with ALSO WORKS BUT IS HIDDEN FROM HELP */
-
-            if (
-                command === "withdraw" ||
-                command === "with"
-            ) {
-                const amount =
-                    Number(args[0]);
-
-                if (
-                    !Number.isFinite(
-                        amount
-                    ) ||
-                    amount <= 0
-                ) {
-                    return message.reply(
-                        "❌ Usage: `!withdraw <amount>`"
-                    );
-                }
-
-                const result =
-                    db.withdraw(
-                        userId,
-                        amount
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        `❌ ${result.reason}`
-                    );
-                }
-
-                return message.reply(
-                    `👛 Withdrew ${CURRENCY} **${money(amount)}** from your bank.`
-                );
-            }
-
-            /* GIVE */
-
-            if (command === "give") {
-                const target =
-                    message.mentions.users.first();
-
-                const amount =
-                    Number(args[1]);
-
-                if (!target) {
-                    return message.reply(
-                        "❌ Mention a user."
-                    );
-                }
-
-                if (
-                    !Number.isFinite(
-                        amount
-                    ) ||
-                    amount <= 0
-                ) {
-                    return message.reply(
-                        "❌ Enter a valid amount."
-                    );
-                }
-
-                const sender =
-                    db.getOrCreateUser(
-                        userId
-                    );
-
-                if (
-                    num(sender.wallet) <
-                    amount
-                ) {
-                    return message.reply(
-                        `❌ You don't have enough ${CURRENCY}.`
-                    );
-                }
-
-                const removed =
-                    db.removeWallet(
-                        userId,
-                        amount
-                    );
-
-                if (!removed) {
-                    return message.reply(
-                        "❌ Transfer failed."
-                    );
-                }
-
-                db.addWallet(
-                    target.id,
-                    amount
-                );
-
-                return message.reply(
-                    `💸 Sent ${CURRENCY} **${money(amount)}** to <@${target.id}>.`
-                );
-            }
-
-            /* SHOP */
-
-            if (command === "shop") {
-                const sub =
-                    String(
-                        args[0] || ""
-                    ).toLowerCase();
-
-                if (
-                    sub === "buy" ||
-                    sub === "purchase"
-                ) {
-                    const item =
-                        String(
-                            args[1] || ""
-                        ).toLowerCase();
-
-                    if (!item) {
-                        return message.reply(
-                            "❌ Usage: `!shop buy <item>`"
-                        );
-                    }
-
-                    const result =
-                        db.buyShopItem(
-                            userId,
-                            item
-                        );
-
-                    if (!result.success) {
-                        return message.reply(
-                            `❌ ${result.reason}`
-                        );
-                    }
-
-                    return message.reply({
-                        embeds: [
-                            new EmbedBuilder()
-                                .setColor(
-                                    0x57F287
-                                )
-                                .setTitle(
-                                    "🛒 PURCHASED"
-                                )
-                                .setDescription(
-                                    `You purchased **${item}**.`
-                                )
-                                .addFields({
-                                    name:
-                                        "💸 Price",
-                                    value:
-                                        `${CURRENCY} ${money(result.price)}`,
-                                    inline: true
-                                })
-                                .setTimestamp()
-                        ]
-                    });
-                }
-
-                const items =
-                    db.getShopItems();
-
-                const embed =
-                    new EmbedBuilder()
-                        .setColor(
-                            0xFEE75C
-                        )
-                        .setTitle(
-                            "🛒 MARKETBOT SHOP"
-                        )
-                        .setDescription(
-                            "Buy virtual items using your wallet.\n" +
-                            "Use `!shop buy <item>` to purchase."
-                        );
-
-                for (const item of items) {
-                    embed.addFields({
-                        name:
-                            `🏷️ ${item.item}`,
-                        value:
-                            `${CURRENCY} **${money(item.price)}**\n` +
-                            `\`!shop buy ${item.item}\``,
-                        inline: true
-                    });
-                }
-
-                return message.reply({
-                    embeds: [embed]
-                });
-            }
-
-            /* INVENTORY */
-
-            if (
-                command === "inventory" ||
-                command === "inv"
-            ) {
-                const inventory =
-                    db.getInventory(
-                        userId
-                    );
-
-                if (
-                    !inventory ||
-                    inventory.length === 0
-                ) {
-                    return message.reply(
-                        "🎒 Your inventory is empty."
-                    );
-                }
-
-                const text =
-                    inventory
-                        .map(
-                            item =>
-                                `**${item.item}** × ${formatAmount(item.amount)}`
-                        )
-                        .join("\n");
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0x5865F2
-                            )
-                            .setTitle(
-                                "🎒 YOUR INVENTORY"
-                            )
-                            .setDescription(
-                                text
-                            )
-                    ]
-                });
-            }
-
-            /* TRANSACTIONS */
-
-            if (
-                command === "transactions" ||
-                command === "tx"
-            ) {
-                const transactions =
-                    db.getTransactions(
-                        userId,
-                        10
-                    );
-
-                if (
-                    !transactions ||
-                    transactions.length === 0
-                ) {
-                    return message.reply(
-                        "📜 You have no transactions yet."
-                    );
-                }
-
-                const text =
-                    transactions
-                        .map(tx => {
-                            const type =
-                                String(
-                                    tx.type || ""
-                                ).toUpperCase();
-
-                            const emoji =
-                                type === "BUY"
-                                    ? "🟢"
-                                    : "🔴";
-
-                            return (
-                                `${emoji} **${type}** ${cleanSymbol(tx.symbol)} × ${formatAmount(tx.amount)}\n` +
-                                `　${money(tx.total)}`
-                            );
-                        })
-                        .join("\n\n");
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0x5865F2
-                            )
-                            .setTitle(
-                                "📜 TRANSACTION HISTORY"
-                            )
-                            .setDescription(
-                                text.slice(
-                                    0,
-                                    4000
-                                )
-                            )
-                    ]
-                });
-            }
-
-            /* LEADERBOARD */
-
-            if (
-                command === "leaderboard" ||
-                command === "lb"
-            ) {
-                const users =
-                    db.getLeaderboard(
-                        10
-                    );
-
-                if (
-                    !users ||
-                    users.length === 0
-                ) {
-                    return message.reply(
-                        "🏆 No leaderboard data yet."
-                    );
-                }
-
-                const text =
-                    users
-                        .map(
-                            (
-                                user,
-                                index
-                            ) => {
-                                const rank =
-                                    index === 0
-                                        ? "🥇"
-                                        : index === 1
-                                            ? "🥈"
-                                            : index === 2
-                                                ? "🥉"
-                                                : `**${index + 1}.**`;
-
-                                const worth =
-                                    num(
-                                        user.netWorth ??
-                                        user.net_worth
-                                    );
-
-                                return (
-                                    `${rank} <@${user.user_id}> — ` +
-                                    `${CURRENCY} **${money(worth)}**`
-                                );
-                            }
-                        )
-                        .join("\n");
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0xFEE75C
-                            )
-                            .setTitle(
-                                "🏆 MARKETBOT LEADERBOARD"
-                            )
-                            .setDescription(
-                                text
-                            )
-                            .setFooter({
-                                text:
-                                    "Ranked by net worth"
-                            })
-                    ]
-                });
-            }
-
-            /* DAILY */
-
-            if (command === "daily") {
-                const result =
-                    db.setDailyClaim(
-                        userId
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        "⏳ You already claimed your daily reward."
-                    );
-                }
-
-                return message.reply(
-                    `🎁 Daily reward: ${CURRENCY} **${money(result.amount)}**`
-                );
-            }
-
-            /* WEEKLY */
-
-            if (command === "weekly") {
-                const result =
-                    db.setWeeklyClaim(
-                        userId
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        "⏳ You already claimed your weekly reward."
-                    );
-                }
-
-                return message.reply(
-                    `🎁 Weekly reward: ${CURRENCY} **${money(result.amount)}**`
-                );
-            }
-
-            /* LUCK */
-
-            if (command === "luck") {
-                const result =
-                    db.claimLuck(
-                        userId
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        "⏳ You already used luck today."
-                    );
-                }
-
-                if (result.won) {
-                    return message.reply(
-                        `🍀 You won ${CURRENCY} **${money(result.amount)}**!`
-                    );
-                }
-
-                return message.reply(
-                    "🍀 You didn't win this time. Try again tomorrow."
-                );
-            }
-
-            /* PING */
-
-            if (command === "ping") {
-                return message.reply(
-                    `🏓 Pong! **${client.ws.ping}ms**`
-                );
-            }
-
-            /* HELP */
-
-            if (command === "help") {
-                return message.reply({
-                    embeds: [
-                        createHelpEmbed()
-                    ]
-                });
-            }
-
-            /* OWNER */
-
-            if (command === "owner") {
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0xED4245
-                            )
-                            .setTitle(
-                                "👑 MARKETBOT OWNER"
-                            )
-                            .setDescription(
-                                "MarketBot management."
-                            )
-                            .addFields(
-                                {
-                                    name:
-                                        "👑 Owners",
-                                    value:
-                                        "MarketBot Owners",
-                                    inline: true
-                                },
-                                {
-                                    name:
-                                        "⚙️ Management",
-                                    value:
-                                        "Use `!ownercmds` if you have permission.",
-                                    inline: true
-                                }
-                            )
-                            .setFooter({
-                                text:
-                                    "MarketBot"
-                            })
-                    ]
-                });
-            }
-
-            /* OWNER COMMANDS */
-
-            if (
-                command ===
-                "ownercmds"
-            ) {
-                if (
-                    !isStaff(userId)
-                ) {
-                    return message.reply(
-                        "❌ You don't have permission to use this command."
-                    );
-                }
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                0xED4245
-                            )
-                            .setTitle(
-                                "🔐 OWNER COMMANDS"
-                            )
-                            .setDescription(
-                                "`!set <asset> <amount>+`\n" +
-                                "`!set <asset> <amount>-`\n" +
-                                "`!resetmarket`\n" +
-                                "`!resetbalance @user`\n" +
-                                "`!resetall`"
-                            )
-                    ]
-                });
-            }
-
-            /* SET */
-
-            if (command === "set") {
-                if (
-                    !isStaff(userId)
-                ) {
-                    return message.reply(
-                        "❌ You don't have permission to use this command."
-                    );
-                }
-
-                const symbol =
-                    cleanSymbol(args[0]);
-
-                const value =
-                    String(
-                        args[1] || ""
-                    );
-
-                if (
-                    !symbol ||
-                    !value
-                ) {
-                    return message.reply(
-                        "❌ Usage: `!set BTC 60+`"
-                    );
-                }
-
-                const last =
-                    value[
-                        value.length - 1
-                    ];
-
-                if (
-                    last !== "+" &&
-                    last !== "-"
-                ) {
-                    return message.reply(
-                        "❌ End the amount with `+` or `-`."
-                    );
-                }
-
-                const amount =
-                    Number(
-                        value.slice(
-                            0,
-                            -1
-                        )
-                    );
-
-                if (
-                    !Number.isFinite(
-                        amount
-                    ) ||
-                    amount <= 0
-                ) {
-                    return message.reply(
-                        "❌ Enter a valid amount."
-                    );
-                }
-
-                const movement =
-                    last === "+"
-                        ? amount
-                        : -amount;
-
-                const result =
-                    db.setAssetChange(
-                        symbol,
-                        movement
-                    );
-
-                if (!result.success) {
-                    return message.reply(
-                        `❌ ${result.reason}`
-                    );
-                }
-
-                return message.reply({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setColor(
-                                result.newChange >= 0
-                                    ? 0x57F287
-                                    : 0xED4245
-                            )
-                            .setTitle(
-                                "⚙️ MARKET UPDATED"
-                            )
-                            .setDescription(
-                                `${assetIcon(symbol)} **${symbol}** was manually adjusted.`
-                            )
-                            .addFields(
-                                {
-                                    name:
-                                        "BEFORE",
-                                    value:
-                                        percent(
-                                            result.oldChange
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name:
-                                        "AFTER",
-                                    value:
-                                        percent(
-                                            result.newChange
-                                        ),
-                                    inline: true
-                                },
-                                {
-                                    name:
-                                        "PRICE",
-                                    value:
-                                        money(
-                                            result.newPrice
-                                        ),
-                                    inline: true
-                                }
-                            )
-                            .setTimestamp()
-                    ]
-                });
-            }
-
-            /* RESET MARKET */
-
-            if (
-                command ===
-                "resetmarket"
-            ) {
-                if (
-                    !isOwner(userId)
-                ) {
-                    return message.reply(
-                        "❌ Owner only."
-                    );
-                }
-
-                db.resetMarket();
-
-                return message.reply(
-                    "🔄 Market history and market changes have been reset."
-                );
-            }
-
-            /* RESET BALANCE */
-
-            if (
-                command ===
-                "resetbalance"
-            ) {
-                if (
-                    !isOwner(userId)
-                ) {
-                    return message.reply(
-                        "❌ Owner only."
-                    );
-                }
-
-                const target =
-                    message.mentions.users.first();
-
-                if (!target) {
-                    return message.reply(
-                        "❌ Mention a user."
-                    );
-                }
-
-                db.resetBalance(
-                    target.id
-                );
-
-                return message.reply(
-                    `🔄 Reset the balance of <@${target.id}>.`
-                );
-            }
-
-            /* RESET ALL */
-
-            if (
-                command ===
-                "resetall"
-            ) {
-                if (
-                    !isOwner(userId)
-                ) {
-                    return message.reply(
-                        "❌ Owner only."
-                    );
-                }
-
-                db.resetAll();
-
-                return message.reply(
-                    "🔄 All economy data has been reset."
-                );
-            }
-
-        } catch (error) {
-            console.error(
-                "[COMMAND ERROR]",
-                error
+client.on("messageCreate", async message => {
+    if (message.author.bot) return;
+
+    if (!message.content.startsWith(PREFIX)) {
+        return;
+    }
+
+    const args = message.content
+        .slice(PREFIX.length)
+        .trim()
+        .split(/\s+/);
+
+    const command =
+        (args.shift() || "").toLowerCase();
+
+    if (!command) return;
+
+    try {
+        /* =====================================================
+           PING
+        ===================================================== */
+
+        if (command === "ping") {
+            const sent = await message.reply("🏓 Pinging...");
+
+            const latency =
+                sent.createdTimestamp -
+                message.createdTimestamp;
+
+            await sent.edit(
+                `🏓 **Pong!**\n` +
+                `> Bot: **${latency}ms**\n` +
+                `> API: **${Math.round(client.ws.ping)}ms**`
             );
 
-            return message.reply(
-                "❌ An error occurred while executing that command."
-            ).catch(() => {});
+            return;
         }
+
+        /* =====================================================
+           HELP
+        ===================================================== */
+
+        if (command === "help") {
+            await message.reply({
+                embeds: [
+                    createHelpEmbed()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           BALANCE
+        ===================================================== */
+
+        if (
+            command === "balance" ||
+            command === "bal"
+        ) {
+            const user =
+                await db.getOrCreateUser(
+                    message.author.id
+                );
+
+            await message.reply({
+                embeds: [
+                    await createBalanceEmbed(
+                        message.author.id,
+                        user
+                    )
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           DEPOSIT
+        ===================================================== */
+
+        if (
+            command === "deposit" ||
+            command === "dep"
+        ) {
+            const amountArg = args[0];
+
+            if (!amountArg) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!deposit <amount>`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const amount =
+                Number(amountArg);
+
+            if (
+                !Number.isFinite(amount) ||
+                amount <= 0
+            ) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Enter a valid positive amount."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const result =
+                await db.deposit(
+                    message.author.id,
+                    amount
+                );
+
+            if (!result.success) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            result.reason
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("🏦 Deposit Complete")
+                        .setDescription(
+                            `You deposited **${money(amount)}** into your bank.`
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           WITHDRAW
+        ===================================================== */
+
+        if (
+            command === "withdraw" ||
+            command === "with"
+        ) {
+            const amountArg = args[0];
+
+            if (!amountArg) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!withdraw <amount>`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const amount =
+                Number(amountArg);
+
+            if (
+                !Number.isFinite(amount) ||
+                amount <= 0
+            ) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Enter a valid positive amount."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const result =
+                await db.withdraw(
+                    message.author.id,
+                    amount
+                );
+
+            if (!result.success) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            result.reason
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("💵 Withdrawal Complete")
+                        .setDescription(
+                            `You withdrew **${money(amount)}** from your bank.`
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           MARKET
+        ===================================================== */
+
+        if (command === "market") {
+            const assets =
+                await db.getAllAssets();
+
+            await message.reply({
+                embeds: [
+                    createMarketEmbed(assets)
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           INFO
+        ===================================================== */
+
+        if (command === "info") {
+            const symbol = args[0];
+
+            if (!symbol) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!info <asset>`\nExample: `!info BTC`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const asset =
+                await db.getAsset(symbol);
+
+            if (!asset) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `I couldn't find the asset **${cleanSymbol(symbol)}**.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    await createInfoEmbed(asset)
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           HISTORY
+        ===================================================== */
+
+        if (command === "history") {
+            const symbol = args[0];
+
+            if (!symbol) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!history <asset>`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const asset =
+                await db.getAsset(symbol);
+
+            if (!asset) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `I couldn't find the asset **${cleanSymbol(symbol)}**.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    await createHistoryEmbed(asset)
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           BUY
+        ===================================================== */
+
+        if (command === "buy") {
+            const symbol = args[0];
+            const amountArg = args[1];
+
+            if (!symbol || !amountArg) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!buy <asset> <amount>`\nExample: `!buy BTC 2`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const asset =
+                await db.getAsset(symbol);
+
+            if (!asset) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const user =
+                await db.getOrCreateUser(
+                    message.author.id
+                );
+
+            let amount;
+
+            if (
+                amountArg.toLowerCase() === "all"
+            ) {
+                const price =
+                    num(asset.price);
+
+                amount =
+                    Math.floor(
+                        (num(user.wallet) / price) *
+                        1000000
+                    ) / 1000000;
+
+                if (amount <= 0) {
+                    await message.reply({
+                        embeds: [
+                            errorEmbed(
+                                "You don't have enough wallet money to buy this asset."
+                            )
+                        ]
+                    });
+
+                    return;
+                }
+            } else {
+                amount =
+                    Number(amountArg);
+            }
+
+            if (
+                !Number.isFinite(amount) ||
+                amount <= 0
+            ) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Enter a valid positive amount."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const result =
+                await db.buyAsset(
+                    message.author.id,
+                    asset.symbol,
+                    amount
+                );
+
+            if (!result.success) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            result.reason
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle(
+                            `${assetIcon(asset.symbol)} Purchase Complete`
+                        )
+                        .setDescription(
+                            `You bought **${formatAmount(result.amount)} ${asset.symbol}**.`
+                        )
+                        .addFields(
+                            {
+                                name: "💵 Price",
+                                value: money(result.price),
+                                inline: true
+                            },
+                            {
+                                name: "💰 Total",
+                                value: money(result.total),
+                                inline: true
+                            },
+                            {
+                                name: "👛 Wallet",
+                                value: money(result.balance),
+                                inline: true
+                            }
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           SELL
+        ===================================================== */
+
+        if (command === "sell") {
+            const symbol = args[0];
+            const amountArg = args[1];
+
+            if (!symbol || !amountArg) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!sell <asset> <amount>`\nExample: `!sell BTC 2`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const asset =
+                await db.getAsset(symbol);
+
+            if (!asset) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            let amount;
+
+            if (
+                amountArg.toLowerCase() === "all"
+            ) {
+                const portfolio =
+                    await db.getPortfolio(
+                        message.author.id
+                    );
+
+                const holding =
+                    portfolio.find(
+                        item =>
+                            cleanSymbol(item.symbol) ===
+                            cleanSymbol(asset.symbol)
+                    );
+
+                if (!holding) {
+                    await message.reply({
+                        embeds: [
+                            errorEmbed(
+                                `You don't own any ${asset.symbol}.`
+                            )
+                        ]
+                    });
+
+                    return;
+                }
+
+                amount =
+                    num(holding.amount);
+            } else {
+                amount =
+                    Number(amountArg);
+            }
+
+            if (
+                !Number.isFinite(amount) ||
+                amount <= 0
+            ) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Enter a valid positive amount."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const result =
+                await db.sellAsset(
+                    message.author.id,
+                    asset.symbol,
+                    amount
+                );
+
+            if (!result.success) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            result.reason
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle(
+                            `${assetIcon(asset.symbol)} Sale Complete`
+                        )
+                        .setDescription(
+                            `You sold **${formatAmount(result.amount)} ${asset.symbol}**.`
+                        )
+                        .addFields(
+                            {
+                                name: "💵 Price",
+                                value: money(result.price),
+                                inline: true
+                            },
+                            {
+                                name: "💰 Received",
+                                value: money(result.total),
+                                inline: true
+                            },
+                            {
+                                name: "👛 Wallet",
+                                value: money(result.balance),
+                                inline: true
+                            }
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           PORTFOLIO
+        ===================================================== */
+
+        if (
+            command === "portfolio" ||
+            command === "port"
+        ) {
+            await message.reply({
+                embeds: [
+                    await createPortfolioEmbed(
+                        message.author.id
+                    )
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           DAILY
+        ===================================================== */
+
+        if (command === "daily") {
+            const result =
+                await db.setDailyClaim(
+                    message.author.id
+                );
+
+            if (!result.success) {
+                const remaining =
+                    Math.max(
+                        0,
+                        result.next -
+                        Date.now()
+                    );
+
+                const hours =
+                    Math.floor(
+                        remaining /
+                        (60 * 60 * 1000)
+                    );
+
+                const minutes =
+                    Math.floor(
+                        (remaining %
+                            (60 * 60 * 1000)) /
+                        (60 * 1000)
+                    );
+
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `You already claimed your daily reward.\nCome back in **${hours}h ${minutes}m**.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("🎁 Daily Reward")
+                        .setDescription(
+                            `You received **${money(result.amount)}**!`
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           WEEKLY
+        ===================================================== */
+
+        if (command === "weekly") {
+            const result =
+                await db.setWeeklyClaim(
+                    message.author.id
+                );
+
+            if (!result.success) {
+                const remaining =
+                    Math.max(
+                        0,
+                        result.next -
+                        Date.now()
+                    );
+
+                const days =
+                    Math.floor(
+                        remaining /
+                        (24 * 60 * 60 * 1000)
+                    );
+
+                const hours =
+                    Math.floor(
+                        (remaining %
+                            (24 * 60 * 60 * 1000)) /
+                        (60 * 60 * 1000)
+                    );
+
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `You already claimed your weekly reward.\nCome back in **${days}d ${hours}h**.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("🎁 Weekly Reward")
+                        .setDescription(
+                            `You received **${money(result.amount)}**!`
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           LUCK
+        ===================================================== */
+
+        if (command === "luck") {
+            const result =
+                await db.claimLuck(
+                    message.author.id
+                );
+
+            if (!result.success) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "🍀 You already used your luck today. Come back tomorrow."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            if (result.won) {
+                await message.reply({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x57f287)
+                            .setTitle("🍀 Lucky!")
+                            .setDescription(
+                                `You won **${money(result.amount)}**!`
+                            )
+                            .setTimestamp()
+                    ]
+                });
+            } else {
+                await message.reply({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0xed4245)
+                            .setTitle("🍀 Unlucky...")
+                            .setDescription(
+                                "You didn't win anything this time."
+                            )
+                            .setTimestamp()
+                    ]
+                });
+            }
+
+            return;
+        }
+
+        /* =====================================================
+           SHOP
+        ===================================================== */
+
+        if (command === "shop") {
+            const subcommand =
+                (args[0] || "").toLowerCase();
+
+            if (subcommand === "buy") {
+                const item = args[1];
+
+                if (!item) {
+                    await message.reply({
+                        embeds: [
+                            errorEmbed(
+                                "Usage: `!shop buy <item>`"
+                            )
+                        ]
+                    });
+
+                    return;
+                }
+
+                const result =
+                    await db.buyShopItem(
+                        message.author.id,
+                        item
+                    );
+
+                if (!result.success) {
+                    await message.reply({
+                        embeds: [
+                            errorEmbed(
+                                result.reason
+                            )
+                        ]
+                    });
+
+                    return;
+                }
+
+                await message.reply({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x57f287)
+                            .setTitle("🛒 Purchase Complete")
+                            .setDescription(
+                                `You bought **${item.toLowerCase()}**.`
+                            )
+                            .addFields({
+                                name: "💰 Price",
+                                value: money(result.price),
+                                inline: true
+                            })
+                            .setTimestamp()
+                    ]
+                });
+
+                return;
+            }
+
+            const items =
+                await db.getShopItems();
+
+            const shopLines =
+                items.map(item => {
+                    return `🛍️ **${item.item}**\n> ${money(item.price)}`;
+                });
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle("🛒 MarketBot Shop")
+                        .setDescription(
+                            shopLines.join("\n\n") +
+                            "\n\nUse `!shop buy <item>` to purchase."
+                        )
+                        .setFooter({
+                            text: "Items are stored in your inventory."
+                        })
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           INVENTORY
+        ===================================================== */
+
+        if (command === "inventory") {
+            const inventory =
+                await db.getInventory(
+                    message.author.id
+                );
+
+            if (!inventory.length) {
+                await message.reply({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x5865f2)
+                            .setTitle("🎒 Inventory")
+                            .setDescription(
+                                "Your inventory is empty."
+                            )
+                            .setTimestamp()
+                    ]
+                });
+
+                return;
+            }
+
+            const lines =
+                inventory.map(item =>
+                    `🧰 **${item.item}** × **${item.amount}**`
+                );
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle("🎒 Your Inventory")
+                        .setDescription(
+                            lines.join("\n")
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           LEADERBOARD
+        ===================================================== */
+
+        if (command === "leaderboard") {
+            const leaderboard =
+                await db.getLeaderboard(10);
+
+            if (!leaderboard.length) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "There aren't any players yet."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const lines = [];
+
+            for (
+                let i = 0;
+                i < leaderboard.length;
+                i++
+            ) {
+                const player =
+                    leaderboard[i];
+
+                let username;
+
+                try {
+                    const user =
+                        await client.users.fetch(
+                            player.user_id
+                        );
+
+                    username =
+                        user.username;
+                } catch {
+                    username =
+                        `User ${player.user_id}`;
+                }
+
+                const medals = [
+                    "🥇",
+                    "🥈",
+                    "🥉"
+                ];
+
+                const rank =
+                    medals[i] ||
+                    `**#${i + 1}**`;
+
+                lines.push(
+                    `${rank} **${username}**\n` +
+                    `> Net Worth: **${compactMoney(player.netWorth)}**`
+                );
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xf1c40f)
+                        .setTitle("🏆 MarketBot Leaderboard")
+                        .setDescription(
+                            lines.join("\n\n")
+                        )
+                        .setFooter({
+                            text: "Ranked by total net worth"
+                        })
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           TRANSACTIONS
+        ===================================================== */
+
+        if (
+            command === "transactions" ||
+            command === "tx"
+        ) {
+            const transactions =
+                await db.getTransactions(
+                    message.author.id,
+                    10
+                );
+
+            if (!transactions.length) {
+                await message.reply({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x5865f2)
+                            .setTitle("📜 Transactions")
+                            .setDescription(
+                                "You don't have any transactions yet."
+                            )
+                            .setTimestamp()
+                    ]
+                });
+
+                return;
+            }
+
+            const lines =
+                transactions.map(tx => {
+                    const type =
+                        String(tx.type)
+                            .toUpperCase();
+
+                    const icon =
+                        type === "BUY"
+                            ? "🟢"
+                            : "🔴";
+
+                    const action =
+                        type === "BUY"
+                            ? "Bought"
+                            : "Sold";
+
+                    return (
+                        `${icon} **${action} ${formatAmount(tx.amount)} ${tx.symbol}**\n` +
+                        `> ${money(tx.total)} @ ${money(tx.price)}`
+                    );
+                });
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle("📜 Recent Transactions")
+                        .setDescription(
+                            lines.join("\n\n")
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           OWNER
+        ===================================================== */
+
+        if (command === "owner") {
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle("👑 MarketBot Ownership")
+                        .setDescription(
+                            "MarketBot is maintained by the bot owners."
+                        )
+                        .addFields(
+                            {
+                                name: "👑 Owner",
+                                value:
+                                    OWNERS
+                                        .map(id => `<@${id}>`)
+                                        .join("\n"),
+                                inline: true
+                            },
+                            {
+                                name: "🛡️ Co-Owner",
+                                value:
+                                    `<@${CO_OWNER}>`,
+                                inline: true
+                            }
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           OWNER COMMANDS
+        ===================================================== */
+
+        if (command === "ownercmds") {
+            if (!isStaff(message.author.id)) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "You don't have permission to use owner commands."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xedc531)
+                        .setTitle("👑 Owner Commands")
+                        .setDescription(
+                            "`!set <asset> <amount>+` — Increase market change\n" +
+                            "`!set <asset> <amount>-` — Decrease market change\n" +
+                            "`!resetmarket` — Reset all market prices\n" +
+                            "`!give <user> <amount>` — Give wallet money\n" +
+                            "`!resetbalance <user>` — Reset a user's balance\n" +
+                            "`!resetall` — Reset the entire economy"
+                        )
+                        .setFooter({
+                            text: "Owner access only"
+                        })
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           SET MARKET
+        ===================================================== */
+
+        if (command === "set") {
+            if (!isStaff(message.author.id)) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "You don't have permission to use this command."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const symbol = args[0];
+            const changeArg = args[1];
+
+            if (!symbol || !changeArg) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!set <asset> <amount>+` or `!set <asset> <amount>-`\nExample: `!set BTC 60+`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const asset =
+                await db.getAsset(symbol);
+
+            if (!asset) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            `Asset **${cleanSymbol(symbol)}** doesn't exist.`
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const lastChar =
+                changeArg.slice(-1);
+
+            if (
+                lastChar !== "+" &&
+                lastChar !== "-"
+            ) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "The amount must end with `+` or `-`."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const amount =
+                Number(
+                    changeArg.slice(0, -1)
+                );
+
+            if (
+                !Number.isFinite(amount) ||
+                amount <= 0
+            ) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Enter a valid positive amount."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const movement =
+                lastChar === "+"
+                    ? amount
+                    : -amount;
+
+            const result =
+                await db.setAssetChange(
+                    asset.symbol,
+                    movement
+                );
+
+            if (!result.success) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            result.reason
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(
+                            movement >= 0
+                                ? 0x57f287
+                                : 0xed4245
+                        )
+                        .setTitle("🛠️ Market Modified")
+                        .setDescription(
+                            `${assetIcon(asset.symbol)} **${asset.symbol}** has been manually adjusted.`
+                        )
+                        .addFields(
+                            {
+                                name: "Before",
+                                value:
+                                    `${money(result.oldPrice)}\n${percent(result.oldChange)}`,
+                                inline: true
+                            },
+                            {
+                                name: "After",
+                                value:
+                                    `${money(result.newPrice)}\n${percent(result.newChange)}`,
+                                inline: true
+                            },
+                            {
+                                name: "Adjustment",
+                                value:
+                                    `${movement >= 0 ? "+" : ""}${movement.toFixed(2)}%`,
+                                inline: true
+                            }
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           RESET MARKET
+        ===================================================== */
+
+        if (command === "resetmarket") {
+            if (!isStaff(message.author.id)) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "You don't have permission to use this command."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await db.resetMarket();
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("🔄 Market Reset")
+                        .setDescription(
+                            "All assets have been returned to their base prices and market history has been cleared."
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           GIVE
+        ===================================================== */
+
+        if (command === "give") {
+            if (!isStaff(message.author.id)) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "You don't have permission to use this command."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const target =
+                message.mentions.users.first();
+
+            const amount =
+                Number(args[target ? 1 : 0]);
+
+            if (!target || !Number.isFinite(amount) || amount <= 0) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!give @user <amount>`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await db.addWallet(
+                target.id,
+                amount
+            );
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("💸 Money Given")
+                        .setDescription(
+                            `Gave **${money(amount)}** to ${target}.`
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           RESET BALANCE
+        ===================================================== */
+
+        if (command === "resetbalance") {
+            if (!isStaff(message.author.id)) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "You don't have permission to use this command."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            const target =
+                message.mentions.users.first();
+
+            if (!target) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Usage: `!resetbalance @user`"
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await db.resetBalance(
+                target.id
+            );
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle("♻️ Balance Reset")
+                        .setDescription(
+                            `${target}'s wallet, bank, investments and inventory have been reset.`
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+        /* =====================================================
+           RESET ALL
+        ===================================================== */
+
+        if (command === "resetall") {
+            if (!isOwner(message.author.id)) {
+                await message.reply({
+                    embeds: [
+                        errorEmbed(
+                            "Only the main owners can use this command."
+                        )
+                    ]
+                });
+
+                return;
+            }
+
+            await db.resetAll();
+
+            await message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xed4245)
+                        .setTitle("⚠️ Economy Reset")
+                        .setDescription(
+                            "The entire MarketBot economy has been reset."
+                        )
+                        .setTimestamp()
+                ]
+            });
+
+            return;
+        }
+
+    } catch (error) {
+        console.error(
+            `[COMMAND ERROR: ${command}]`,
+            error
+        );
+
+        try {
+            await message.reply({
+                embeds: [
+                    errorEmbed(
+                        "An unexpected error occurred while executing that command."
+                    )
+                ]
+            });
+        } catch {}
     }
-);
+});
 
 /* =========================================================
-   STARTUP
+   READY
 ========================================================= */
 
-client.once(
-    "clientReady",
-    () => {
-        console.log(
-            `✅ Logged in as ${client.user.tag}`
-        );
+client.once("clientReady", async () => {
+    console.log(
+        `✅ Logged in as ${client.user.tag}`
+    );
+
+    console.log(
+        "🔄 Initializing Supabase database..."
+    );
+
+    try {
+        await db.initDatabase();
 
         console.log(
-            "📊 Market engine started"
+            "✅ Database ready."
         );
 
-        updateMarket();
+        await updateMarket();
 
         setInterval(
             updateMarket,
             30 * 1000
         );
-    }
-);
 
-client.on(
-    "error",
-    error => {
+        console.log(
+            "📈 Market engine started."
+        );
+
+    } catch (error) {
         console.error(
-            "[DISCORD ERROR]",
+            "❌ Failed to initialize database:",
             error
         );
     }
-);
+});
+
+/* =========================================================
+   LOGIN
+========================================================= */
+
+client.login(TOKEN);
+
+/* =========================================================
+   PROCESS ERRORS
+========================================================= */
 
 process.on(
     "unhandledRejection",
@@ -2037,8 +2260,4 @@ process.on(
             error
         );
     }
-);
-
-client.login(
-    process.env.TOKEN
 );
