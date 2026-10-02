@@ -27,123 +27,179 @@ pool.on("error", error => {
 ========================================================= */
 
 const defaultAssets = [
-    {
-        symbol: "BTC",
-        name: "Bitcoin",
-        type: "crypto",
-        price: 15000
-    },
-    {
-        symbol: "ETH",
-        name: "Ethereum",
-        type: "crypto",
-        price: 900
-    },
-    {
-        symbol: "SOL",
-        name: "Solana",
-        type: "crypto",
-        price: 60
-    },
-    {
-        symbol: "XRP",
-        name: "XRP",
-        type: "crypto",
-        price: 1.25
-    },
-    {
-        symbol: "DOGE",
-        name: "Dogecoin",
-        type: "crypto",
-        price: 0.12
-    },
-    {
-        symbol: "ADA",
-        name: "Cardano",
-        type: "crypto",
-        price: 0.35
-    },
-    {
-        symbol: "BNB",
-        name: "BNB",
-        type: "crypto",
-        price: 325
-    },
+    { symbol: "BTC", name: "Bitcoin", type: "crypto", price: 15000 },
+    { symbol: "ETH", name: "Ethereum", type: "crypto", price: 900 },
+    { symbol: "SOL", name: "Solana", type: "crypto", price: 60 },
+    { symbol: "XRP", name: "XRP", type: "crypto", price: 1.25 },
+    { symbol: "DOGE", name: "Dogecoin", type: "crypto", price: 0.12 },
+    { symbol: "ADA", name: "Cardano", type: "crypto", price: 0.35 },
+    { symbol: "BNB", name: "BNB", type: "crypto", price: 325 },
 
-    {
-        symbol: "TSLA",
-        name: "Tesla",
-        type: "stock",
-        price: 125
-    },
-    {
-        symbol: "AAPL",
-        name: "Apple",
-        type: "stock",
-        price: 115
-    },
-    {
-        symbol: "NVDA",
-        name: "NVIDIA",
-        type: "stock",
-        price: 90
-    },
-    {
-        symbol: "MSFT",
-        name: "Microsoft",
-        type: "stock",
-        price: 255
-    },
-    {
-        symbol: "AMZN",
-        name: "Amazon",
-        type: "stock",
-        price: 115
-    },
-    {
-        symbol: "META",
-        name: "Meta",
-        type: "stock",
-        price: 375
-    },
-    {
-        symbol: "NFLX",
-        name: "Netflix",
-        type: "stock",
-        price: 600
-    },
-    {
-        symbol: "AMD",
-        name: "AMD",
-        type: "stock",
-        price: 80
-    }
+    { symbol: "TSLA", name: "Tesla", type: "stock", price: 125 },
+    { symbol: "AAPL", name: "Apple", type: "stock", price: 115 },
+    { symbol: "NVDA", name: "NVIDIA", type: "stock", price: 90 },
+    { symbol: "MSFT", name: "Microsoft", type: "stock", price: 255 },
+    { symbol: "AMZN", name: "Amazon", type: "stock", price: 115 },
+    { symbol: "META", name: "Meta", type: "stock", price: 375 },
+    { symbol: "NFLX", name: "Netflix", type: "stock", price: 600 },
+    { symbol: "AMD", name: "AMD", type: "stock", price: 80 }
 ];
 
 /* =========================================================
-   SHOP
+   BIG SHOP
 ========================================================= */
 
 const defaultShop = [
+    /* Vehicles */
+    { item: "motorcycle", price: 85000, category: "Vehicles" },
+    { item: "suv", price: 175000, category: "Vehicles" },
+    { item: "sportscar", price: 250000, category: "Vehicles" },
+    { item: "supercar", price: 750000, category: "Vehicles" },
+    { item: "hypercar", price: 1500000, category: "Vehicles" },
+    { item: "helicopter", price: 3500000, category: "Vehicles" },
+    { item: "privatejet", price: 15000000, category: "Vehicles" },
+    { item: "yacht", price: 2500000, category: "Vehicles" },
+
+    /* Properties */
+    { item: "apartment", price: 150000, category: "Properties" },
+    { item: "house", price: 500000, category: "Properties" },
+    { item: "villa", price: 1200000, category: "Properties" },
+    { item: "penthouse", price: 3500000, category: "Properties" },
+    { item: "mansion", price: 2500000, category: "Properties" },
+    { item: "estate", price: 7500000, category: "Properties" },
+
+    /* Luxury */
+    { item: "diamond", price: 250000, category: "Luxury" },
+    { item: "luxurywatch", price: 125000, category: "Luxury" },
+    { item: "designerbag", price: 75000, category: "Luxury" },
+    { item: "goldchain", price: 45000, category: "Luxury" },
+    { item: "diamondring", price: 175000, category: "Luxury" },
+
+    /* Electronics */
+    { item: "smartphone", price: 2500, category: "Electronics" },
+    { item: "console", price: 1500, category: "Electronics" },
+    { item: "gamingsetup", price: 8500, category: "Electronics" },
+    { item: "gamingpc", price: 12000, category: "Electronics" },
+    { item: "laptop", price: 5000, category: "Electronics" },
+    { item: "tv", price: 3500, category: "Electronics" },
+
+    /* Lifestyle */
+    { item: "guitar", price: 3500, category: "Lifestyle" },
+    { item: "piano", price: 25000, category: "Lifestyle" },
+    { item: "artwork", price: 100000, category: "Lifestyle" },
+    { item: "privategym", price: 350000, category: "Lifestyle" },
+    { item: "racetrack", price: 5000000, category: "Lifestyle" }
+];
+
+/* =========================================================
+   BUSINESSES
+========================================================= */
+
+const defaultBusinesses = [
     {
-        item: "yacht",
-        price: 2500000
+        slug: "burger-house",
+        name: "Burger House",
+        icon: "🍔",
+        price: 250000,
+        income: 2500
     },
     {
-        item: "supercar",
-        price: 750000
+        slug: "coffee-shop",
+        name: "Coffee Shop",
+        icon: "☕",
+        price: 150000,
+        income: 1500
     },
     {
-        item: "sportscar",
-        price: 250000
+        slug: "gaming-lounge",
+        name: "Gaming Lounge",
+        icon: "🎮",
+        price: 400000,
+        income: 4500
     },
     {
-        item: "house",
-        price: 500000
+        slug: "fitness-club",
+        name: "Fitness Club",
+        icon: "🏋️",
+        price: 600000,
+        income: 6500
     },
     {
-        item: "mansion",
-        price: 2500000
+        slug: "gas-station",
+        name: "Gas Station",
+        icon: "⛽",
+        price: 750000,
+        income: 8000
+    },
+    {
+        slug: "supermarket",
+        name: "Supermarket",
+        icon: "🛒",
+        price: 1000000,
+        income: 11000
+    },
+    {
+        slug: "restaurant",
+        name: "Luxury Restaurant",
+        icon: "🍽️",
+        price: 1500000,
+        income: 16000
+    },
+    {
+        slug: "cinema",
+        name: "Cinema",
+        icon: "🎬",
+        price: 2000000,
+        income: 21000
+    },
+    {
+        slug: "car-dealership",
+        name: "Car Dealership",
+        icon: "🚗",
+        price: 3500000,
+        income: 35000
+    },
+    {
+        slug: "hotel",
+        name: "Luxury Hotel",
+        icon: "🏨",
+        price: 5000000,
+        income: 50000
+    },
+    {
+        slug: "office-building",
+        name: "Office Building",
+        icon: "🏢",
+        price: 7500000,
+        income: 70000
+    },
+    {
+        slug: "factory",
+        name: "Factory",
+        icon: "🏭",
+        price: 10000000,
+        income: 95000
+    },
+    {
+        slug: "shopping-mall",
+        name: "Shopping Mall",
+        icon: "🏬",
+        price: 15000000,
+        income: 140000
+    },
+    {
+        slug: "bank",
+        name: "Private Bank",
+        icon: "🏦",
+        price: 25000000,
+        income: 220000
+    },
+    {
+        slug: "tech-company",
+        name: "Tech Company",
+        icon: "💻",
+        price: 50000000,
+        income: 450000
     }
 ];
 
@@ -228,11 +284,42 @@ async function initDatabase() {
         await client.query(`
             CREATE TABLE IF NOT EXISTS shop (
                 item TEXT PRIMARY KEY,
-                price DOUBLE PRECISION NOT NULL
+                price DOUBLE PRECISION NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Other'
             )
         `);
 
-        /* Seed assets */
+        await client.query(`
+            ALTER TABLE shop
+            ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'Other'
+        `);
+
+        /* Businesses */
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS businesses (
+                slug TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                icon TEXT NOT NULL DEFAULT '🏢',
+                price DOUBLE PRECISION NOT NULL,
+                base_income DOUBLE PRECISION NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS user_businesses (
+                user_id TEXT NOT NULL,
+                business_slug TEXT NOT NULL,
+                level INTEGER NOT NULL DEFAULT 1,
+                stored_income DOUBLE PRECISION NOT NULL DEFAULT 0,
+                last_collected BIGINT NOT NULL DEFAULT 0,
+                purchased_at BIGINT NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, business_slug)
+            )
+        `);
+
+        /* Seed assets without changing existing market values */
 
         for (const asset of defaultAssets) {
             await client.query(
@@ -268,16 +355,49 @@ async function initDatabase() {
                 `
                 INSERT INTO shop (
                     item,
-                    price
+                    price,
+                    category
                 )
-                VALUES ($1, $2)
+                VALUES ($1, $2, $3)
                 ON CONFLICT (item)
                 DO UPDATE SET
-                    price = EXCLUDED.price
+                    price = EXCLUDED.price,
+                    category = EXCLUDED.category
                 `,
                 [
                     item.item,
-                    item.price
+                    item.price,
+                    item.category
+                ]
+            );
+        }
+
+        /* Seed businesses */
+
+        for (const business of defaultBusinesses) {
+            await client.query(
+                `
+                INSERT INTO businesses (
+                    slug,
+                    name,
+                    icon,
+                    price,
+                    base_income
+                )
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (slug)
+                DO UPDATE SET
+                    name = EXCLUDED.name,
+                    icon = EXCLUDED.icon,
+                    price = EXCLUDED.price,
+                    base_income = EXCLUDED.base_income
+                `,
+                [
+                    business.slug,
+                    business.name,
+                    business.icon,
+                    business.price,
+                    business.income
                 ]
             );
         }
@@ -285,6 +405,8 @@ async function initDatabase() {
         await client.query("COMMIT");
 
         console.log("✅ Supabase PostgreSQL database initialized.");
+        console.log("🏪 Shop loaded.");
+        console.log("🏢 Businesses loaded.");
     } catch (error) {
         await client.query("ROLLBACK");
         console.error("[DATABASE INIT ERROR]", error);
@@ -331,10 +453,7 @@ async function addWallet(userId, amount) {
         SET wallet = wallet + $1
         WHERE user_id = $2
         `,
-        [
-            amount,
-            userId
-        ]
+        [amount, userId]
     );
 
     return true;
@@ -349,10 +468,7 @@ async function removeWallet(userId, amount) {
           AND wallet >= $1
         RETURNING *
         `,
-        [
-            amount,
-            userId
-        ]
+        [amount, userId]
     );
 
     return result.rowCount > 0;
@@ -392,10 +508,7 @@ async function deposit(userId, amount) {
               AND wallet >= $1
             RETURNING *
             `,
-            [
-                amount,
-                userId
-            ]
+            [amount, userId]
         );
 
         if (!result.rowCount) {
@@ -409,9 +522,7 @@ async function deposit(userId, amount) {
 
         await client.query("COMMIT");
 
-        return {
-            success: true
-        };
+        return { success: true };
     } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -450,10 +561,7 @@ async function withdraw(userId, amount) {
               AND bank >= $1
             RETURNING *
             `,
-            [
-                amount,
-                userId
-            ]
+            [amount, userId]
         );
 
         if (!result.rowCount) {
@@ -467,9 +575,7 @@ async function withdraw(userId, amount) {
 
         await client.query("COMMIT");
 
-        return {
-            success: true
-        };
+        return { success: true };
     } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -542,8 +648,7 @@ async function setAssetChange(symbol, amount) {
 
         const asset = assetResult.rows[0];
 
-        const oldChange =
-            Number(asset.change_percent) || 0;
+        const oldChange = Number(asset.change_percent) || 0;
 
         const newChange = Math.max(
             -50,
@@ -553,15 +658,11 @@ async function setAssetChange(symbol, amount) {
             )
         );
 
-        const basePrice =
-            Number(asset.base_price);
-
-        const oldPrice =
-            Number(asset.price);
+        const basePrice = Number(asset.base_price);
+        const oldPrice = Number(asset.price);
 
         const newPrice =
-            basePrice *
-            (1 + newChange / 100);
+            basePrice * (1 + newChange / 100);
 
         await client.query(
             `
@@ -589,13 +690,7 @@ async function setAssetChange(symbol, amount) {
                 timestamp,
                 created_at
             )
-            VALUES (
-                $1,
-                $2,
-                $3,
-                $4,
-                NOW()
-            )
+            VALUES ($1, $2, $3, $4, NOW())
             `,
             [
                 asset.symbol,
@@ -641,6 +736,8 @@ async function resetMarket() {
         `);
 
         await client.query("COMMIT");
+
+        return { success: true };
     } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -658,10 +755,7 @@ async function getMarketHistory(symbol, limit = 40) {
         ORDER BY timestamp DESC
         LIMIT $2
         `,
-        [
-            symbol,
-            limit
-        ]
+        [symbol, limit]
     );
 
     return result.rows.reverse();
@@ -700,17 +794,26 @@ async function getPortfolio(userId) {
 async function getNetWorth(userId) {
     const user = await getOrCreateUser(userId);
     const portfolio = await getPortfolio(userId);
+    const businesses = await getBusinesses(userId);
 
     const portfolioValue = portfolio.reduce(
-        (sum, item) =>
-            sum + Number(item.value || 0),
+        (sum, item) => sum + Number(item.value || 0),
+        0
+    );
+
+    const businessValue = businesses.reduce(
+        (sum, item) => {
+            const level = Number(item.level || 1);
+            return sum + Number(item.price || 0) * level;
+        },
         0
     );
 
     return (
         Number(user.wallet || 0) +
         Number(user.bank || 0) +
-        portfolioValue
+        portfolioValue +
+        businessValue
     );
 }
 
@@ -758,12 +861,8 @@ async function buyAsset(userId, symbol, amount) {
         }
 
         const asset = assetResult.rows[0];
-
-        const price =
-            Number(asset.price);
-
-        const total =
-            price * Number(amount);
+        const price = Number(asset.price);
+        const total = price * Number(amount);
 
         const userResult = await client.query(
             `
@@ -777,10 +876,7 @@ async function buyAsset(userId, symbol, amount) {
 
         const user = userResult.rows[0];
 
-        if (
-            Number(user.wallet) <
-            total
-        ) {
+        if (Number(user.wallet) < total) {
             await client.query("ROLLBACK");
 
             return {
@@ -789,43 +885,29 @@ async function buyAsset(userId, symbol, amount) {
             };
         }
 
-        const holdingResult =
-            await client.query(
-                `
-                SELECT *
-                FROM holdings
-                WHERE user_id = $1
-                  AND UPPER(symbol) = UPPER($2)
-                FOR UPDATE
-                `,
-                [
-                    userId,
-                    symbol
-                ]
-            );
+        const holdingResult = await client.query(
+            `
+            SELECT *
+            FROM holdings
+            WHERE user_id = $1
+              AND UPPER(symbol) = UPPER($2)
+            FOR UPDATE
+            `,
+            [userId, symbol]
+        );
 
         if (holdingResult.rowCount) {
-            const holding =
-                holdingResult.rows[0];
+            const holding = holdingResult.rows[0];
 
-            const oldAmount =
-                Number(holding.amount);
-
-            const oldAverage =
-                Number(holding.average_price);
-
-            const newAmount =
-                oldAmount +
-                Number(amount);
+            const oldAmount = Number(holding.amount);
+            const oldAverage = Number(holding.average_price);
+            const newAmount = oldAmount + Number(amount);
 
             const newAverage =
                 (
-                    oldAmount *
-                    oldAverage +
-                    Number(amount) *
-                    price
-                ) /
-                newAmount;
+                    oldAmount * oldAverage +
+                    Number(amount) * price
+                ) / newAmount;
 
             await client.query(
                 `
@@ -864,8 +946,7 @@ async function buyAsset(userId, symbol, amount) {
         }
 
         const newBalance =
-            Number(user.wallet) -
-            total;
+            Number(user.wallet) - total;
 
         await client.query(
             `
@@ -873,10 +954,7 @@ async function buyAsset(userId, symbol, amount) {
             SET wallet = $1
             WHERE user_id = $2
             `,
-            [
-                newBalance,
-                userId
-            ]
+            [newBalance, userId]
         );
 
         await client.query(
@@ -891,16 +969,7 @@ async function buyAsset(userId, symbol, amount) {
                 timestamp,
                 created_at
             )
-            VALUES (
-                $1,
-                $2,
-                'BUY',
-                $3,
-                $4,
-                $5,
-                $6,
-                NOW()
-            )
+            VALUES ($1, $2, 'BUY', $3, $4, $5, $6, NOW())
             `,
             [
                 userId,
@@ -974,20 +1043,16 @@ async function sellAsset(userId, symbol, amount) {
 
         const asset = assetResult.rows[0];
 
-        const holdingResult =
-            await client.query(
-                `
-                SELECT *
-                FROM holdings
-                WHERE user_id = $1
-                  AND UPPER(symbol) = UPPER($2)
-                FOR UPDATE
-                `,
-                [
-                    userId,
-                    symbol
-                ]
-            );
+        const holdingResult = await client.query(
+            `
+            SELECT *
+            FROM holdings
+            WHERE user_id = $1
+              AND UPPER(symbol) = UPPER($2)
+            FOR UPDATE
+            `,
+            [userId, symbol]
+        );
 
         if (!holdingResult.rowCount) {
             await client.query("ROLLBACK");
@@ -998,16 +1063,10 @@ async function sellAsset(userId, symbol, amount) {
             };
         }
 
-        const holding =
-            holdingResult.rows[0];
+        const holding = holdingResult.rows[0];
+        const owned = Number(holding.amount);
 
-        const owned =
-            Number(holding.amount);
-
-        if (
-            owned <
-            Number(amount)
-        ) {
+        if (owned < Number(amount)) {
             await client.query("ROLLBACK");
 
             return {
@@ -1016,16 +1075,9 @@ async function sellAsset(userId, symbol, amount) {
             };
         }
 
-        const price =
-            Number(asset.price);
-
-        const total =
-            price *
-            Number(amount);
-
-        const newAmount =
-            owned -
-            Number(amount);
+        const price = Number(asset.price);
+        const total = price * Number(amount);
+        const newAmount = owned - Number(amount);
 
         if (newAmount <= 0) {
             await client.query(
@@ -1034,10 +1086,7 @@ async function sellAsset(userId, symbol, amount) {
                 WHERE user_id = $1
                   AND UPPER(symbol) = UPPER($2)
                 `,
-                [
-                    userId,
-                    symbol
-                ]
+                [userId, symbol]
             );
         } else {
             await client.query(
@@ -1055,23 +1104,20 @@ async function sellAsset(userId, symbol, amount) {
             );
         }
 
-        const userResult =
-            await client.query(
-                `
-                SELECT *
-                FROM users
-                WHERE user_id = $1
-                FOR UPDATE
-                `,
-                [userId]
-            );
+        const userResult = await client.query(
+            `
+            SELECT *
+            FROM users
+            WHERE user_id = $1
+            FOR UPDATE
+            `,
+            [userId]
+        );
 
-        const user =
-            userResult.rows[0];
+        const user = userResult.rows[0];
 
         const newBalance =
-            Number(user.wallet) +
-            total;
+            Number(user.wallet) + total;
 
         await client.query(
             `
@@ -1079,10 +1125,7 @@ async function sellAsset(userId, symbol, amount) {
             SET wallet = $1
             WHERE user_id = $2
             `,
-            [
-                newBalance,
-                userId
-            ]
+            [newBalance, userId]
         );
 
         await client.query(
@@ -1097,16 +1140,7 @@ async function sellAsset(userId, symbol, amount) {
                 timestamp,
                 created_at
             )
-            VALUES (
-                $1,
-                $2,
-                'SELL',
-                $3,
-                $4,
-                $5,
-                $6,
-                NOW()
-            )
+            VALUES ($1, $2, 'SELL', $3, $4, $5, $6, NOW())
             `,
             [
                 userId,
@@ -1148,10 +1182,7 @@ async function getTransactions(userId, limit = 10) {
         ORDER BY timestamp DESC
         LIMIT $2
         `,
-        [
-            userId,
-            limit
-        ]
+        [userId, limit]
     );
 
     return result.rows;
@@ -1162,20 +1193,15 @@ async function getTransactions(userId, limit = 10) {
 ========================================================= */
 
 async function getLeaderboard(limit = 10) {
-    const usersResult = await pool.query(
-        `
+    const usersResult = await pool.query(`
         SELECT *
         FROM users
-        `
-    );
+    `);
 
     const users = [];
 
     for (const user of usersResult.rows) {
-        const netWorth =
-            await getNetWorth(
-                user.user_id
-            );
+        const netWorth = await getNetWorth(user.user_id);
 
         users.push({
             user_id: user.user_id,
@@ -1187,15 +1213,10 @@ async function getLeaderboard(limit = 10) {
     }
 
     users.sort(
-        (a, b) =>
-            b.netWorth -
-            a.netWorth
+        (a, b) => b.netWorth - a.netWorth
     );
 
-    return users.slice(
-        0,
-        limit
-    );
+    return users.slice(0, limit);
 }
 
 /* =========================================================
@@ -1206,27 +1227,18 @@ async function setDailyClaim(userId) {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
 
-    const user =
-        await getOrCreateUser(userId);
+    const user = await getOrCreateUser(userId);
+    const last = Number(user.daily_claim || 0);
 
-    const last =
-        Number(user.daily_claim || 0);
-
-    if (
-        last &&
-        now - last < day
-    ) {
+    if (last && now - last < day) {
         return {
             success: false,
-            next:
-                last + day
+            next: last + day
         };
     }
 
     const amount =
-        Math.floor(
-            Math.random() * 5000
-        ) + 500;
+        Math.floor(Math.random() * 5000) + 500;
 
     await pool.query(
         `
@@ -1236,11 +1248,7 @@ async function setDailyClaim(userId) {
             daily_claim = $2
         WHERE user_id = $3
         `,
-        [
-            amount,
-            now,
-            userId
-        ]
+        [amount, now, userId]
     );
 
     return {
@@ -1255,30 +1263,20 @@ async function setDailyClaim(userId) {
 
 async function setWeeklyClaim(userId) {
     const now = Date.now();
-    const week =
-        7 * 24 * 60 * 60 * 1000;
+    const week = 7 * 24 * 60 * 60 * 1000;
 
-    const user =
-        await getOrCreateUser(userId);
+    const user = await getOrCreateUser(userId);
+    const last = Number(user.weekly_claim || 0);
 
-    const last =
-        Number(user.weekly_claim || 0);
-
-    if (
-        last &&
-        now - last < week
-    ) {
+    if (last && now - last < week) {
         return {
             success: false,
-            next:
-                last + week
+            next: last + week
         };
     }
 
     const amount =
-        Math.floor(
-            Math.random() * 25000
-        ) + 5000;
+        Math.floor(Math.random() * 25000) + 5000;
 
     await pool.query(
         `
@@ -1288,11 +1286,7 @@ async function setWeeklyClaim(userId) {
             weekly_claim = $2
         WHERE user_id = $3
         `,
-        [
-            amount,
-            now,
-            userId
-        ]
+        [amount, now, userId]
     );
 
     return {
@@ -1308,32 +1302,24 @@ async function setWeeklyClaim(userId) {
 async function claimLuck(userId) {
     const now = Date.now();
 
-    const date =
-        new Date()
-            .toISOString()
-            .slice(0, 10);
+    const date = new Date()
+        .toISOString()
+        .slice(0, 10);
 
-    const user =
-        await getOrCreateUser(userId);
+    const user = await getOrCreateUser(userId);
 
-    if (
-        user.luck_day === date
-    ) {
+    if (user.luck_day === date) {
         return {
             success: false,
             next: "tomorrow"
         };
     }
 
-    const won =
-        Math.random() < 0.5;
+    const won = Math.random() < 0.5;
 
-    const amount =
-        won
-            ? Math.floor(
-                Math.random() * 10000
-            ) + 500
-            : 0;
+    const amount = won
+        ? Math.floor(Math.random() * 10000) + 500
+        : 0;
 
     await pool.query(
         `
@@ -1367,7 +1353,9 @@ async function getShopItems() {
     const result = await pool.query(`
         SELECT *
         FROM shop
-        ORDER BY price ASC
+        ORDER BY
+            category,
+            price ASC
     `);
 
     return result.rows;
@@ -1379,16 +1367,15 @@ async function buyShopItem(userId, item) {
     try {
         await client.query("BEGIN");
 
-        const shopResult =
-            await client.query(
-                `
-                SELECT *
-                FROM shop
-                WHERE LOWER(item) = LOWER($1)
-                FOR UPDATE
-                `,
-                [item]
-            );
+        const shopResult = await client.query(
+            `
+            SELECT *
+            FROM shop
+            WHERE LOWER(item) = LOWER($1)
+            FOR UPDATE
+            `,
+            [item]
+        );
 
         if (!shopResult.rowCount) {
             await client.query("ROLLBACK");
@@ -1399,11 +1386,8 @@ async function buyShopItem(userId, item) {
             };
         }
 
-        const shopItem =
-            shopResult.rows[0];
-
-        const price =
-            Number(shopItem.price);
+        const shopItem = shopResult.rows[0];
+        const price = Number(shopItem.price);
 
         await client.query(
             `
@@ -1419,24 +1403,19 @@ async function buyShopItem(userId, item) {
             [userId]
         );
 
-        const userResult =
-            await client.query(
-                `
-                SELECT *
-                FROM users
-                WHERE user_id = $1
-                FOR UPDATE
-                `,
-                [userId]
-            );
+        const userResult = await client.query(
+            `
+            SELECT *
+            FROM users
+            WHERE user_id = $1
+            FOR UPDATE
+            `,
+            [userId]
+        );
 
-        const user =
-            userResult.rows[0];
+        const user = userResult.rows[0];
 
-        if (
-            Number(user.wallet) <
-            price
-        ) {
+        if (Number(user.wallet) < price) {
             await client.query("ROLLBACK");
 
             return {
@@ -1451,10 +1430,7 @@ async function buyShopItem(userId, item) {
             SET wallet = wallet - $1
             WHERE user_id = $2
             `,
-            [
-                price,
-                userId
-            ]
+            [price, userId]
         );
 
         await client.query(
@@ -1479,7 +1455,9 @@ async function buyShopItem(userId, item) {
 
         return {
             success: true,
-            price
+            price,
+            item: shopItem.item,
+            category: shopItem.category
         };
     } catch (error) {
         await client.query("ROLLBACK");
@@ -1502,6 +1480,536 @@ async function getInventory(userId) {
     );
 
     return result.rows;
+}
+
+/* =========================================================
+   BUSINESSES
+========================================================= */
+
+async function getBusinesses(userId) {
+    const result = await pool.query(
+        `
+        SELECT
+            b.slug,
+            b.name,
+            b.icon,
+            b.price,
+            b.base_income,
+            ub.level,
+            ub.stored_income,
+            ub.last_collected,
+            ub.purchased_at,
+            (
+                b.base_income *
+                POWER(1.25, GREATEST(ub.level - 1, 0))
+            ) AS income_per_hour
+        FROM user_businesses ub
+        JOIN businesses b
+            ON b.slug = ub.business_slug
+        WHERE ub.user_id = $1
+        ORDER BY
+            b.price DESC
+        `,
+        [userId]
+    );
+
+    return result.rows;
+}
+
+async function getAllBusinesses() {
+    const result = await pool.query(`
+        SELECT *
+        FROM businesses
+        ORDER BY price ASC
+    `);
+
+    return result.rows;
+}
+
+async function getBusiness(slug) {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM businesses
+        WHERE LOWER(slug) = LOWER($1)
+        LIMIT 1
+        `,
+        [slug]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function buyBusiness(userId, slug) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const businessResult = await client.query(
+            `
+            SELECT *
+            FROM businesses
+            WHERE LOWER(slug) = LOWER($1)
+            FOR UPDATE
+            `,
+            [slug]
+        );
+
+        if (!businessResult.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "That business doesn't exist."
+            };
+        }
+
+        const business = businessResult.rows[0];
+
+        const ownedResult = await client.query(
+            `
+            SELECT *
+            FROM user_businesses
+            WHERE user_id = $1
+              AND business_slug = $2
+            FOR UPDATE
+            `,
+            [userId, business.slug]
+        );
+
+        if (ownedResult.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You already own this business."
+            };
+        }
+
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
+
+        const userResult = await client.query(
+            `
+            SELECT *
+            FROM users
+            WHERE user_id = $1
+            FOR UPDATE
+            `,
+            [userId]
+        );
+
+        const user = userResult.rows[0];
+        const price = Number(business.price);
+
+        if (Number(user.wallet) < price) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't have enough money."
+            };
+        }
+
+        const now = Date.now();
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = wallet - $1
+            WHERE user_id = $2
+            `,
+            [price, userId]
+        );
+
+        await client.query(
+            `
+            INSERT INTO user_businesses (
+                user_id,
+                business_slug,
+                level,
+                stored_income,
+                last_collected,
+                purchased_at
+            )
+            VALUES ($1, $2, 1, 0, $3, $3)
+            `,
+            [
+                userId,
+                business.slug,
+                now
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            business,
+            price
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function calculateBusinessIncome(userId, businessSlug) {
+    const result = await pool.query(
+        `
+        SELECT
+            ub.*,
+            b.name,
+            b.icon,
+            b.price,
+            b.base_income
+        FROM user_businesses ub
+        JOIN businesses b
+            ON b.slug = ub.business_slug
+        WHERE ub.user_id = $1
+          AND ub.business_slug = $2
+        `,
+        [userId, businessSlug]
+    );
+
+    if (!result.rowCount) {
+        return null;
+    }
+
+    const business = result.rows[0];
+
+    const level = Number(business.level || 1);
+    const baseIncome = Number(business.base_income || 0);
+    const incomePerHour =
+        baseIncome * Math.pow(1.25, level - 1);
+
+    const now = Date.now();
+    const lastCollected =
+        Number(business.last_collected || now);
+
+    const elapsed = Math.max(
+        0,
+        now - lastCollected
+    );
+
+    const hours = elapsed / (60 * 60 * 1000);
+
+    const generated =
+        incomePerHour * hours;
+
+    return {
+        ...business,
+        level,
+        incomePerHour,
+        generated
+    };
+}
+
+async function collectBusiness(userId, businessSlug) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const result = await client.query(
+            `
+            SELECT
+                ub.*,
+                b.name,
+                b.icon,
+                b.price,
+                b.base_income
+            FROM user_businesses ub
+            JOIN businesses b
+                ON b.slug = ub.business_slug
+            WHERE ub.user_id = $1
+              AND LOWER(ub.business_slug) = LOWER($2)
+            FOR UPDATE
+            `,
+            [userId, businessSlug]
+        );
+
+        if (!result.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't own this business."
+            };
+        }
+
+        const business = result.rows[0];
+
+        const level = Number(business.level || 1);
+
+        const incomePerHour =
+            Number(business.base_income) *
+            Math.pow(1.25, level - 1);
+
+        const now = Date.now();
+
+        const lastCollected =
+            Number(business.last_collected || now);
+
+        const elapsed =
+            Math.max(0, now - lastCollected);
+
+        const hours =
+            elapsed / (60 * 60 * 1000);
+
+        const generated =
+            incomePerHour * hours;
+
+        if (generated < 0.01) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "Your business hasn't generated enough income yet."
+            };
+        }
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = wallet + $1
+            WHERE user_id = $2
+            `,
+            [generated, userId]
+        );
+
+        await client.query(
+            `
+            UPDATE user_businesses
+            SET
+                stored_income = 0,
+                last_collected = $1
+            WHERE user_id = $2
+              AND business_slug = $3
+            `,
+            [
+                now,
+                userId,
+                business.business_slug
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            amount: generated,
+            business: business.name,
+            icon: business.icon
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function upgradeBusiness(userId, slug) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const result = await client.query(
+            `
+            SELECT
+                ub.*,
+                b.name,
+                b.icon,
+                b.price,
+                b.base_income
+            FROM user_businesses ub
+            JOIN businesses b
+                ON b.slug = ub.business_slug
+            WHERE ub.user_id = $1
+              AND LOWER(ub.business_slug) = LOWER($2)
+            FOR UPDATE
+            `,
+            [userId, slug]
+        );
+
+        if (!result.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't own this business."
+            };
+        }
+
+        const business = result.rows[0];
+        const level = Number(business.level || 1);
+
+        const upgradePrice =
+            Number(business.price) *
+            0.5 *
+            Math.pow(1.35, level - 1);
+
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
+
+        const userResult = await client.query(
+            `
+            SELECT *
+            FROM users
+            WHERE user_id = $1
+            FOR UPDATE
+            `,
+            [userId]
+        );
+
+        const user = userResult.rows[0];
+
+        if (Number(user.wallet) < upgradePrice) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't have enough money for this upgrade."
+            };
+        }
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = wallet - $1
+            WHERE user_id = $2
+            `,
+            [upgradePrice, userId]
+        );
+
+        await client.query(
+            `
+            UPDATE user_businesses
+            SET level = level + 1
+            WHERE user_id = $1
+              AND business_slug = $2
+            `,
+            [userId, business.business_slug]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            name: business.name,
+            icon: business.icon,
+            oldLevel: level,
+            newLevel: level + 1,
+            price: upgradePrice
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function sellBusiness(userId, slug) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const result = await client.query(
+            `
+            SELECT
+                ub.*,
+                b.name,
+                b.icon,
+                b.price
+            FROM user_businesses ub
+            JOIN businesses b
+                ON b.slug = ub.business_slug
+            WHERE ub.user_id = $1
+              AND LOWER(ub.business_slug) = LOWER($2)
+            FOR UPDATE
+            `,
+            [userId, slug]
+        );
+
+        if (!result.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't own this business."
+            };
+        }
+
+        const business = result.rows[0];
+
+        const level = Number(business.level || 1);
+
+        const sellValue =
+            Number(business.price) *
+            0.70 *
+            Math.pow(1.25, level - 1);
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = wallet + $1
+            WHERE user_id = $2
+            `,
+            [sellValue, userId]
+        );
+
+        await client.query(
+            `
+            DELETE FROM user_businesses
+            WHERE user_id = $1
+              AND business_slug = $2
+            `,
+            [userId, business.business_slug]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            name: business.name,
+            icon: business.icon,
+            amount: sellValue
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 /* =========================================================
@@ -1539,6 +2047,18 @@ async function resetBalance(userId) {
         `,
         [userId]
     );
+
+    await pool.query(
+        `
+        DELETE FROM user_businesses
+        WHERE user_id = $1
+        `,
+        [userId]
+    );
+
+    return {
+        success: true
+    };
 }
 
 async function resetAll() {
@@ -1550,6 +2070,7 @@ async function resetAll() {
         await client.query("DELETE FROM transactions");
         await client.query("DELETE FROM holdings");
         await client.query("DELETE FROM inventory");
+        await client.query("DELETE FROM user_businesses");
         await client.query("DELETE FROM users");
         await client.query("DELETE FROM market_history");
 
@@ -1562,6 +2083,10 @@ async function resetAll() {
         `);
 
         await client.query("COMMIT");
+
+        return {
+            success: true
+        };
     } catch (error) {
         await client.query("ROLLBACK");
         throw error;
@@ -1608,6 +2133,15 @@ module.exports = {
     getShopItems,
     buyShopItem,
     getInventory,
+
+    getBusinesses,
+    getAllBusinesses,
+    getBusiness,
+    buyBusiness,
+    calculateBusinessIncome,
+    collectBusiness,
+    upgradeBusiness,
+    sellBusiness,
 
     resetBalance,
     resetAll
