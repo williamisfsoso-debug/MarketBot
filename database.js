@@ -1,112 +1,32 @@
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 
-const db = new Database("market.db");
+const DATABASE_URL = process.env.DATABASE_URL;
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-
-// ============================================================
-// TABLES
-// ============================================================
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    wallet REAL NOT NULL DEFAULT 10000,
-    bank REAL NOT NULL DEFAULT 0,
-    daily_claim INTEGER NOT NULL DEFAULT 0,
-    weekly_claim INTEGER NOT NULL DEFAULT 0,
-    luck_day TEXT,
-    luck_last_claim INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS assets (
-    symbol TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    base_price REAL NOT NULL,
-    price REAL NOT NULL,
-    previous_price REAL NOT NULL,
-    change_percent REAL NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS market_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT NOT NULL,
-    price REAL NOT NULL,
-    change_percent REAL NOT NULL,
-    timestamp INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS holdings (
-    user_id TEXT NOT NULL,
-    symbol TEXT NOT NULL,
-    amount REAL NOT NULL DEFAULT 0,
-    average_price REAL NOT NULL DEFAULT 0,
-    PRIMARY KEY (user_id, symbol)
-);
-
-CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    symbol TEXT,
-    type TEXT NOT NULL,
-    amount REAL NOT NULL,
-    price REAL NOT NULL,
-    total REAL NOT NULL,
-    timestamp INTEGER NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS inventory (
-    user_id TEXT NOT NULL,
-    item TEXT NOT NULL,
-    amount INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (user_id, item)
-);
-
-CREATE TABLE IF NOT EXISTS shop (
-    item TEXT PRIMARY KEY,
-    price REAL NOT NULL
-);
-`);
-
-// ============================================================
-// SAFE MIGRATIONS
-// ============================================================
-
-function addColumnIfMissing(table, column, definition) {
-    try {
-        const columns = db.prepare(`PRAGMA table_info(${table})`).all();
-
-        if (!columns.some(col => col.name === column)) {
-            db.exec(
-                `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`
-            );
-        }
-    } catch (error) {
-        console.error(
-            `Migration error for ${table}.${column}:`,
-            error.message
-        );
-    }
+if (!DATABASE_URL) {
+    throw new Error(
+        "DATABASE_URL is missing. Add your Supabase PostgreSQL connection string to Render environment variables."
+    );
 }
 
-addColumnIfMissing("users", "daily_claim", "INTEGER NOT NULL DEFAULT 0");
-addColumnIfMissing("users", "weekly_claim", "INTEGER NOT NULL DEFAULT 0");
-addColumnIfMissing("users", "luck_day", "TEXT");
-addColumnIfMissing("users", "luck_last_claim", "INTEGER NOT NULL DEFAULT 0");
+const pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    },
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
+});
 
-addColumnIfMissing("assets", "previous_price", "REAL NOT NULL DEFAULT 0");
-addColumnIfMissing("assets", "change_percent", "REAL NOT NULL DEFAULT 0");
+pool.on("error", error => {
+    console.error("[POSTGRES ERROR]", error);
+});
 
-// ============================================================
-// ASSETS
-// ============================================================
+/* =========================================================
+   DEFAULT ASSETS
+========================================================= */
 
 const defaultAssets = [
-    // CRYPTO
     {
         symbol: "BTC",
         name: "Bitcoin",
@@ -150,7 +70,6 @@ const defaultAssets = [
         price: 325
     },
 
-    // STOCKS
     {
         symbol: "TSLA",
         name: "Tesla",
@@ -201,413 +120,1127 @@ const defaultAssets = [
     }
 ];
 
-// ============================================================
-// INSERT / UPDATE ASSETS
-// ============================================================
+/* =========================================================
+   SHOP
+========================================================= */
 
-const insertAsset = db.prepare(`
-    INSERT INTO assets (
-        symbol,
-        name,
-        type,
-        base_price,
-        price,
-        previous_price,
-        change_percent
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(symbol) DO NOTHING
-`);
-
-for (const asset of defaultAssets) {
-    insertAsset.run(
-        asset.symbol,
-        asset.name,
-        asset.type,
-        asset.price,
-        asset.price,
-        asset.price,
-        0
-    );
-}
-
-// Update metadata but DON'T reset a market that has already moved.
-for (const asset of defaultAssets) {
-    const existing = db.prepare(`
-        SELECT *
-        FROM assets
-        WHERE symbol = ?
-    `).get(asset.symbol);
-
-    if (!existing) continue;
-
-    const hasNeverMoved =
-        Number(existing.change_percent || 0) === 0;
-
-    db.prepare(`
-        UPDATE assets
-        SET
-            name = ?,
-            type = ?,
-            base_price = ?
-        WHERE symbol = ?
-    `).run(
-        asset.name,
-        asset.type,
-        asset.price,
-        asset.symbol
-    );
-
-    // If it was still at 0%, use the new cheaper base price.
-    if (hasNeverMoved) {
-        db.prepare(`
-            UPDATE assets
-            SET
-                price = ?,
-                previous_price = ?
-            WHERE symbol = ?
-        `).run(
-            asset.price,
-            asset.price,
-            asset.symbol
-        );
+const defaultShop = [
+    {
+        item: "yacht",
+        price: 2500000
+    },
+    {
+        item: "supercar",
+        price: 750000
+    },
+    {
+        item: "sportscar",
+        price: 250000
+    },
+    {
+        item: "house",
+        price: 500000
+    },
+    {
+        item: "mansion",
+        price: 2500000
     }
-}
-
-// ============================================================
-// SHOP
-// ============================================================
-
-const shopItems = [
-    ["yacht", 2500000],
-    ["supercar", 750000],
-    ["sportscar", 250000],
-    ["house", 500000],
-    ["mansion", 2500000]
 ];
 
-const insertShop = db.prepare(`
-    INSERT INTO shop (item, price)
-    VALUES (?, ?)
-    ON CONFLICT(item)
-    DO UPDATE SET price = excluded.price
-`);
+/* =========================================================
+   DATABASE INIT
+========================================================= */
 
-for (const [item, price] of shopItems) {
-    insertShop.run(item, price);
-}
+async function initDatabase() {
+    const client = await pool.connect();
 
-// ============================================================
-// USERS
-// ============================================================
+    try {
+        await client.query("BEGIN");
 
-function getOrCreateUser(userId) {
-    let user = db.prepare(`
-        SELECT *
-        FROM users
-        WHERE user_id = ?
-    `).get(userId);
-
-    if (!user) {
-        db.prepare(`
-            INSERT INTO users (
-                user_id,
-                wallet,
-                bank,
-                daily_claim,
-                weekly_claim,
-                luck_last_claim
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                user_id TEXT PRIMARY KEY,
+                wallet DOUBLE PRECISION NOT NULL DEFAULT 10000,
+                bank DOUBLE PRECISION NOT NULL DEFAULT 0,
+                daily_claim BIGINT NOT NULL DEFAULT 0,
+                weekly_claim BIGINT NOT NULL DEFAULT 0,
+                luck_day TEXT,
+                luck_last_claim BIGINT NOT NULL DEFAULT 0
             )
-            VALUES (?, 10000, 0, 0, 0, 0)
-        `).run(userId);
+        `);
 
-        user = db.prepare(`
-            SELECT *
-            FROM users
-            WHERE user_id = ?
-        `).get(userId);
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS assets (
+                symbol TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                base_price DOUBLE PRECISION NOT NULL,
+                price DOUBLE PRECISION NOT NULL,
+                previous_price DOUBLE PRECISION NOT NULL,
+                change_percent DOUBLE PRECISION NOT NULL DEFAULT 0
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS market_history (
+                id BIGSERIAL PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                price DOUBLE PRECISION NOT NULL,
+                change_percent DOUBLE PRECISION NOT NULL DEFAULT 0,
+                timestamp BIGINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS holdings (
+                user_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+                average_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, symbol)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS transactions (
+                id BIGSERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                type TEXT NOT NULL,
+                amount DOUBLE PRECISION NOT NULL,
+                price DOUBLE PRECISION NOT NULL,
+                total DOUBLE PRECISION NOT NULL,
+                timestamp BIGINT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS inventory (
+                user_id TEXT NOT NULL,
+                item TEXT NOT NULL,
+                amount INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, item)
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS shop (
+                item TEXT PRIMARY KEY,
+                price DOUBLE PRECISION NOT NULL
+            )
+        `);
+
+        /* Seed assets */
+
+        for (const asset of defaultAssets) {
+            await client.query(
+                `
+                INSERT INTO assets (
+                    symbol,
+                    name,
+                    type,
+                    base_price,
+                    price,
+                    previous_price,
+                    change_percent
+                )
+                VALUES ($1, $2, $3, $4, $4, $4, 0)
+                ON CONFLICT (symbol)
+                DO UPDATE SET
+                    name = EXCLUDED.name,
+                    type = EXCLUDED.type
+                `,
+                [
+                    asset.symbol,
+                    asset.name,
+                    asset.type,
+                    asset.price
+                ]
+            );
+        }
+
+        /* Seed shop */
+
+        for (const item of defaultShop) {
+            await client.query(
+                `
+                INSERT INTO shop (
+                    item,
+                    price
+                )
+                VALUES ($1, $2)
+                ON CONFLICT (item)
+                DO UPDATE SET
+                    price = EXCLUDED.price
+                `,
+                [
+                    item.item,
+                    item.price
+                ]
+            );
+        }
+
+        await client.query("COMMIT");
+
+        console.log("✅ Supabase PostgreSQL database initialized.");
+    } catch (error) {
+        await client.query("ROLLBACK");
+        console.error("[DATABASE INIT ERROR]", error);
+        throw error;
+    } finally {
+        client.release();
     }
-
-    return user;
 }
 
-// ============================================================
-// WALLET
-// ============================================================
+/* =========================================================
+   USERS
+========================================================= */
 
-function withdraw(userId, amount) {
-    getOrCreateUser(userId);
-
-    amount = Number(amount);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-        return {
-            success: false,
-            reason: "Invalid amount."
-        };
-    }
-
-    const result = db.prepare(`
-        UPDATE users
-        SET wallet = wallet - ?
-        WHERE user_id = ?
-        AND wallet >= ?
-    `).run(
-        amount,
-        userId,
-        amount
+async function getOrCreateUser(userId) {
+    const result = await pool.query(
+        `
+        INSERT INTO users (
+            user_id,
+            wallet,
+            bank
+        )
+        VALUES ($1, 10000, 0)
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+            user_id = EXCLUDED.user_id
+        RETURNING *
+        `,
+        [userId]
     );
 
-    if (result.changes === 0) {
-        return {
-            success: false,
-            reason: "You don't have enough money in your wallet."
-        };
-    }
-
-    return {
-        success: true
-    };
+    return result.rows[0];
 }
 
-function addWallet(userId, amount) {
-    getOrCreateUser(userId);
+/* =========================================================
+   WALLET
+========================================================= */
 
-    amount = Number(amount);
+async function addWallet(userId, amount) {
+    await getOrCreateUser(userId);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-        return false;
-    }
-
-    db.prepare(`
+    await pool.query(
+        `
         UPDATE users
-        SET wallet = wallet + ?
-        WHERE user_id = ?
-    `).run(
-        amount,
-        userId
+        SET wallet = wallet + $1
+        WHERE user_id = $2
+        `,
+        [
+            amount,
+            userId
+        ]
     );
 
     return true;
 }
 
-// ============================================================
-// BANK
-// ============================================================
-
-function deposit(userId, amount) {
-    getOrCreateUser(userId);
-
-    amount = Number(amount);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-        return {
-            success: false,
-            reason: "Invalid amount."
-        };
-    }
-
-    const result = db.prepare(`
+async function removeWallet(userId, amount) {
+    const result = await pool.query(
+        `
         UPDATE users
-        SET
-            wallet = wallet - ?,
-            bank = bank + ?
-        WHERE user_id = ?
-        AND wallet >= ?
-    `).run(
-        amount,
-        amount,
-        userId,
-        amount
+        SET wallet = wallet - $1
+        WHERE user_id = $2
+          AND wallet >= $1
+        RETURNING *
+        `,
+        [
+            amount,
+            userId
+        ]
     );
 
-    if (result.changes === 0) {
-        return {
-            success: false,
-            reason: "You don't have enough money in your wallet."
-        };
-    }
-
-    return {
-        success: true
-    };
+    return result.rowCount > 0;
 }
 
-function withdrawBank(userId, amount) {
-    getOrCreateUser(userId);
+/* =========================================================
+   BANK
+========================================================= */
 
-    amount = Number(amount);
+async function deposit(userId, amount) {
+    const client = await pool.connect();
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    try {
+        await client.query("BEGIN");
+
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
+
+        const result = await client.query(
+            `
+            UPDATE users
+            SET
+                wallet = wallet - $1,
+                bank = bank + $1
+            WHERE user_id = $2
+              AND wallet >= $1
+            RETURNING *
+            `,
+            [
+                amount,
+                userId
+            ]
+        );
+
+        if (!result.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't have enough money in your wallet."
+            };
+        }
+
+        await client.query("COMMIT");
+
         return {
-            success: false,
-            reason: "Invalid amount."
+            success: true
         };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
     }
-
-    const result = db.prepare(`
-        UPDATE users
-        SET
-            bank = bank - ?,
-            wallet = wallet + ?
-        WHERE user_id = ?
-        AND bank >= ?
-    `).run(
-        amount,
-        amount,
-        userId,
-        amount
-    );
-
-    if (result.changes === 0) {
-        return {
-            success: false,
-            reason: "You don't have enough money in your bank."
-        };
-    }
-
-    return {
-        success: true
-    };
 }
 
-// ============================================================
-// NET WORTH
-// ============================================================
+async function withdraw(userId, amount) {
+    const client = await pool.connect();
 
-function getNetWorth(userId) {
-    const user = getOrCreateUser(userId);
-    const portfolio = getPortfolio(userId);
+    try {
+        await client.query("BEGIN");
 
-    const investments = portfolio.reduce(
-        (total, item) => {
-            return total +
-                Number(item.price || 0) *
-                Number(item.amount || 0);
-        },
-        0
-    );
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
 
-    return (
-        Number(user.wallet || 0) +
-        Number(user.bank || 0) +
-        investments
-    );
+        const result = await client.query(
+            `
+            UPDATE users
+            SET
+                wallet = wallet + $1,
+                bank = bank - $1
+            WHERE user_id = $2
+              AND bank >= $1
+            RETURNING *
+            `,
+            [
+                amount,
+                userId
+            ]
+        );
+
+        if (!result.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't have enough money in your bank."
+            };
+        }
+
+        await client.query("COMMIT");
+
+        return {
+            success: true
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
-// ============================================================
-// PORTFOLIO
-// ============================================================
+/* =========================================================
+   ASSETS
+========================================================= */
 
-function getPortfolio(userId) {
-    getOrCreateUser(userId);
+async function getAllAssets() {
+    const result = await pool.query(`
+        SELECT *
+        FROM assets
+        ORDER BY
+            CASE
+                WHEN LOWER(type) = 'crypto' THEN 0
+                ELSE 1
+            END,
+            symbol
+    `);
 
-    const rows = db.prepare(`
+    return result.rows;
+}
+
+async function getAsset(symbol) {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM assets
+        WHERE UPPER(symbol) = UPPER($1)
+        LIMIT 1
+        `,
+        [symbol]
+    );
+
+    return result.rows[0] || null;
+}
+
+/* =========================================================
+   MARKET
+========================================================= */
+
+async function setAssetChange(symbol, amount) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const assetResult = await client.query(
+            `
+            SELECT *
+            FROM assets
+            WHERE UPPER(symbol) = UPPER($1)
+            FOR UPDATE
+            `,
+            [symbol]
+        );
+
+        if (!assetResult.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "Asset not found."
+            };
+        }
+
+        const asset = assetResult.rows[0];
+
+        const oldChange =
+            Number(asset.change_percent) || 0;
+
+        const newChange = Math.max(
+            -50,
+            Math.min(
+                500,
+                oldChange + Number(amount)
+            )
+        );
+
+        const basePrice =
+            Number(asset.base_price);
+
+        const oldPrice =
+            Number(asset.price);
+
+        const newPrice =
+            basePrice *
+            (1 + newChange / 100);
+
+        await client.query(
+            `
+            UPDATE assets
+            SET
+                previous_price = $1,
+                price = $2,
+                change_percent = $3
+            WHERE symbol = $4
+            `,
+            [
+                oldPrice,
+                newPrice,
+                newChange,
+                asset.symbol
+            ]
+        );
+
+        await client.query(
+            `
+            INSERT INTO market_history (
+                symbol,
+                price,
+                change_percent,
+                timestamp,
+                created_at
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                NOW()
+            )
+            `,
+            [
+                asset.symbol,
+                newPrice,
+                newChange,
+                Date.now()
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            oldChange,
+            newChange,
+            oldPrice,
+            newPrice
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function resetMarket() {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        await client.query(`
+            UPDATE assets
+            SET
+                price = base_price,
+                previous_price = base_price,
+                change_percent = 0
+        `);
+
+        await client.query(`
+            DELETE FROM market_history
+        `);
+
+        await client.query("COMMIT");
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function getMarketHistory(symbol, limit = 40) {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM market_history
+        WHERE UPPER(symbol) = UPPER($1)
+        ORDER BY timestamp DESC
+        LIMIT $2
+        `,
+        [
+            symbol,
+            limit
+        ]
+    );
+
+    return result.rows.reverse();
+}
+
+/* =========================================================
+   PORTFOLIO
+========================================================= */
+
+async function getPortfolio(userId) {
+    const result = await pool.query(
+        `
         SELECT
+            h.user_id,
             h.symbol,
             h.amount,
             h.average_price,
             a.name,
             a.type,
             a.price,
-            a.change_percent
+            a.change_percent,
+            (h.amount * a.price) AS value
         FROM holdings h
         JOIN assets a
-            ON a.symbol = h.symbol
-        WHERE h.user_id = ?
-        AND h.amount > 0
-        ORDER BY a.symbol
-    `).all(userId);
+            ON UPPER(a.symbol) = UPPER(h.symbol)
+        WHERE h.user_id = $1
+          AND h.amount > 0
+        ORDER BY value DESC
+        `,
+        [userId]
+    );
 
-    return rows.map(row => ({
-        ...row,
-        value:
-            Number(row.price || 0) *
-            Number(row.amount || 0)
-    }));
+    return result.rows;
 }
 
-// ============================================================
-// TRANSACTIONS
-// ============================================================
+async function getNetWorth(userId) {
+    const user = await getOrCreateUser(userId);
+    const portfolio = await getPortfolio(userId);
 
-function getTransactions(userId, limit = 10) {
-    return db.prepare(`
-        SELECT *
-        FROM transactions
-        WHERE user_id = ?
-        ORDER BY id DESC
-        LIMIT ?
-    `).all(
-        userId,
-        Math.max(1, Number(limit))
+    const portfolioValue = portfolio.reduce(
+        (sum, item) =>
+            sum + Number(item.value || 0),
+        0
+    );
+
+    return (
+        Number(user.wallet || 0) +
+        Number(user.bank || 0) +
+        portfolioValue
     );
 }
 
-// ============================================================
-// LEADERBOARD
-// ============================================================
+/* =========================================================
+   BUY
+========================================================= */
 
-function getLeaderboard(limit = 10) {
-    const users = db.prepare(`
-        SELECT *
-        FROM users
-    `).all();
+async function buyAsset(userId, symbol, amount) {
+    const client = await pool.connect();
 
-    return users
-        .map(user => {
-            const netWorth = getNetWorth(user.user_id);
+    try {
+        await client.query("BEGIN");
+
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
+
+        const assetResult = await client.query(
+            `
+            SELECT *
+            FROM assets
+            WHERE UPPER(symbol) = UPPER($1)
+            FOR UPDATE
+            `,
+            [symbol]
+        );
+
+        if (!assetResult.rowCount) {
+            await client.query("ROLLBACK");
 
             return {
-                user_id: user.user_id,
-                netWorth,
-                net_worth: netWorth
+                success: false,
+                reason: "Asset not found."
             };
-        })
-        .sort(
-            (a, b) => b.netWorth - a.netWorth
-        )
-        .slice(
-            0,
-            Number(limit)
+        }
+
+        const asset = assetResult.rows[0];
+
+        const price =
+            Number(asset.price);
+
+        const total =
+            price * Number(amount);
+
+        const userResult = await client.query(
+            `
+            SELECT *
+            FROM users
+            WHERE user_id = $1
+            FOR UPDATE
+            `,
+            [userId]
         );
+
+        const user = userResult.rows[0];
+
+        if (
+            Number(user.wallet) <
+            total
+        ) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't have enough money."
+            };
+        }
+
+        const holdingResult =
+            await client.query(
+                `
+                SELECT *
+                FROM holdings
+                WHERE user_id = $1
+                  AND UPPER(symbol) = UPPER($2)
+                FOR UPDATE
+                `,
+                [
+                    userId,
+                    symbol
+                ]
+            );
+
+        if (holdingResult.rowCount) {
+            const holding =
+                holdingResult.rows[0];
+
+            const oldAmount =
+                Number(holding.amount);
+
+            const oldAverage =
+                Number(holding.average_price);
+
+            const newAmount =
+                oldAmount +
+                Number(amount);
+
+            const newAverage =
+                (
+                    oldAmount *
+                    oldAverage +
+                    Number(amount) *
+                    price
+                ) /
+                newAmount;
+
+            await client.query(
+                `
+                UPDATE holdings
+                SET
+                    amount = $1,
+                    average_price = $2
+                WHERE user_id = $3
+                  AND UPPER(symbol) = UPPER($4)
+                `,
+                [
+                    newAmount,
+                    newAverage,
+                    userId,
+                    symbol
+                ]
+            );
+        } else {
+            await client.query(
+                `
+                INSERT INTO holdings (
+                    user_id,
+                    symbol,
+                    amount,
+                    average_price
+                )
+                VALUES ($1, $2, $3, $4)
+                `,
+                [
+                    userId,
+                    asset.symbol,
+                    amount,
+                    price
+                ]
+            );
+        }
+
+        const newBalance =
+            Number(user.wallet) -
+            total;
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = $1
+            WHERE user_id = $2
+            `,
+            [
+                newBalance,
+                userId
+            ]
+        );
+
+        await client.query(
+            `
+            INSERT INTO transactions (
+                user_id,
+                symbol,
+                type,
+                amount,
+                price,
+                total,
+                timestamp,
+                created_at
+            )
+            VALUES (
+                $1,
+                $2,
+                'BUY',
+                $3,
+                $4,
+                $5,
+                $6,
+                NOW()
+            )
+            `,
+            [
+                userId,
+                asset.symbol,
+                amount,
+                price,
+                total,
+                Date.now()
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            amount: Number(amount),
+            price,
+            total,
+            balance: newBalance
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
-// ============================================================
-// DAILY
-// ============================================================
+/* =========================================================
+   SELL
+========================================================= */
 
-function setDailyClaim(userId) {
-    const user = getOrCreateUser(userId);
+async function sellAsset(userId, symbol, amount) {
+    const client = await pool.connect();
 
+    try {
+        await client.query("BEGIN");
+
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
+
+        const assetResult = await client.query(
+            `
+            SELECT *
+            FROM assets
+            WHERE UPPER(symbol) = UPPER($1)
+            FOR UPDATE
+            `,
+            [symbol]
+        );
+
+        if (!assetResult.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "Asset not found."
+            };
+        }
+
+        const asset = assetResult.rows[0];
+
+        const holdingResult =
+            await client.query(
+                `
+                SELECT *
+                FROM holdings
+                WHERE user_id = $1
+                  AND UPPER(symbol) = UPPER($2)
+                FOR UPDATE
+                `,
+                [
+                    userId,
+                    symbol
+                ]
+            );
+
+        if (!holdingResult.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't own this asset."
+            };
+        }
+
+        const holding =
+            holdingResult.rows[0];
+
+        const owned =
+            Number(holding.amount);
+
+        if (
+            owned <
+            Number(amount)
+        ) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: `You only own ${owned} ${asset.symbol}.`
+            };
+        }
+
+        const price =
+            Number(asset.price);
+
+        const total =
+            price *
+            Number(amount);
+
+        const newAmount =
+            owned -
+            Number(amount);
+
+        if (newAmount <= 0) {
+            await client.query(
+                `
+                DELETE FROM holdings
+                WHERE user_id = $1
+                  AND UPPER(symbol) = UPPER($2)
+                `,
+                [
+                    userId,
+                    symbol
+                ]
+            );
+        } else {
+            await client.query(
+                `
+                UPDATE holdings
+                SET amount = $1
+                WHERE user_id = $2
+                  AND UPPER(symbol) = UPPER($3)
+                `,
+                [
+                    newAmount,
+                    userId,
+                    symbol
+                ]
+            );
+        }
+
+        const userResult =
+            await client.query(
+                `
+                SELECT *
+                FROM users
+                WHERE user_id = $1
+                FOR UPDATE
+                `,
+                [userId]
+            );
+
+        const user =
+            userResult.rows[0];
+
+        const newBalance =
+            Number(user.wallet) +
+            total;
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = $1
+            WHERE user_id = $2
+            `,
+            [
+                newBalance,
+                userId
+            ]
+        );
+
+        await client.query(
+            `
+            INSERT INTO transactions (
+                user_id,
+                symbol,
+                type,
+                amount,
+                price,
+                total,
+                timestamp,
+                created_at
+            )
+            VALUES (
+                $1,
+                $2,
+                'SELL',
+                $3,
+                $4,
+                $5,
+                $6,
+                NOW()
+            )
+            `,
+            [
+                userId,
+                asset.symbol,
+                amount,
+                price,
+                total,
+                Date.now()
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            amount: Number(amount),
+            price,
+            total,
+            balance: newBalance
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+/* =========================================================
+   TRANSACTIONS
+========================================================= */
+
+async function getTransactions(userId, limit = 10) {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM transactions
+        WHERE user_id = $1
+        ORDER BY timestamp DESC
+        LIMIT $2
+        `,
+        [
+            userId,
+            limit
+        ]
+    );
+
+    return result.rows;
+}
+
+/* =========================================================
+   LEADERBOARD
+========================================================= */
+
+async function getLeaderboard(limit = 10) {
+    const usersResult = await pool.query(
+        `
+        SELECT *
+        FROM users
+        `
+    );
+
+    const users = [];
+
+    for (const user of usersResult.rows) {
+        const netWorth =
+            await getNetWorth(
+                user.user_id
+            );
+
+        users.push({
+            user_id: user.user_id,
+            wallet: Number(user.wallet),
+            bank: Number(user.bank),
+            netWorth,
+            net_worth: netWorth
+        });
+    }
+
+    users.sort(
+        (a, b) =>
+            b.netWorth -
+            a.netWorth
+    );
+
+    return users.slice(
+        0,
+        limit
+    );
+}
+
+/* =========================================================
+   DAILY
+========================================================= */
+
+async function setDailyClaim(userId) {
     const now = Date.now();
-    const cooldown = 24 * 60 * 60 * 1000;
+    const day = 24 * 60 * 60 * 1000;
 
-    const lastClaim =
+    const user =
+        await getOrCreateUser(userId);
+
+    const last =
         Number(user.daily_claim || 0);
 
     if (
-        lastClaim > 0 &&
-        now - lastClaim < cooldown
+        last &&
+        now - last < day
     ) {
         return {
             success: false,
-            next: lastClaim + cooldown
+            next:
+                last + day
         };
     }
 
-    const amount = 2500;
+    const amount =
+        Math.floor(
+            Math.random() * 5000
+        ) + 500;
 
-    db.prepare(`
+    await pool.query(
+        `
         UPDATE users
         SET
-            wallet = wallet + ?,
-            daily_claim = ?
-        WHERE user_id = ?
-    `).run(
-        amount,
-        now,
-        userId
+            wallet = wallet + $1,
+            daily_claim = $2
+        WHERE user_id = $3
+        `,
+        [
+            amount,
+            now,
+            userId
+        ]
     );
 
     return {
@@ -616,41 +1249,50 @@ function setDailyClaim(userId) {
     };
 }
 
-// ============================================================
-// WEEKLY
-// ============================================================
+/* =========================================================
+   WEEKLY
+========================================================= */
 
-function setWeeklyClaim(userId) {
-    const user = getOrCreateUser(userId);
-
+async function setWeeklyClaim(userId) {
     const now = Date.now();
-    const cooldown = 7 * 24 * 60 * 60 * 1000;
+    const week =
+        7 * 24 * 60 * 60 * 1000;
 
-    const lastClaim =
+    const user =
+        await getOrCreateUser(userId);
+
+    const last =
         Number(user.weekly_claim || 0);
 
     if (
-        lastClaim > 0 &&
-        now - lastClaim < cooldown
+        last &&
+        now - last < week
     ) {
         return {
             success: false,
-            next: lastClaim + cooldown
+            next:
+                last + week
         };
     }
 
-    const amount = 10000;
+    const amount =
+        Math.floor(
+            Math.random() * 25000
+        ) + 5000;
 
-    db.prepare(`
+    await pool.query(
+        `
         UPDATE users
         SET
-            wallet = wallet + ?,
-            weekly_claim = ?
-        WHERE user_id = ?
-    `).run(
-        amount,
-        now,
-        userId
+            wallet = wallet + $1,
+            weekly_claim = $2
+        WHERE user_id = $3
+        `,
+        [
+            amount,
+            now,
+            userId
+        ]
     );
 
     return {
@@ -659,48 +1301,55 @@ function setWeeklyClaim(userId) {
     };
 }
 
-// ============================================================
-// LUCK
-// ============================================================
+/* =========================================================
+   LUCK
+========================================================= */
 
-function claimLuck(userId) {
-    const user = getOrCreateUser(userId);
-
+async function claimLuck(userId) {
     const now = Date.now();
-    const cooldown = 24 * 60 * 60 * 1000;
 
-    const lastClaim =
-        Number(user.luck_last_claim || 0);
+    const date =
+        new Date()
+            .toISOString()
+            .slice(0, 10);
+
+    const user =
+        await getOrCreateUser(userId);
 
     if (
-        lastClaim > 0 &&
-        now - lastClaim < cooldown
+        user.luck_day === date
     ) {
         return {
             success: false,
-            next: lastClaim + cooldown
+            next: "tomorrow"
         };
     }
 
-    const won = Math.random() < 0.55;
+    const won =
+        Math.random() < 0.5;
 
-    const amount = won
-        ? Math.floor(
-            1000 +
-            Math.random() * 9000
-        )
-        : 0;
+    const amount =
+        won
+            ? Math.floor(
+                Math.random() * 10000
+            ) + 500
+            : 0;
 
-    db.prepare(`
+    await pool.query(
+        `
         UPDATE users
         SET
-            wallet = wallet + ?,
-            luck_last_claim = ?
-        WHERE user_id = ?
-    `).run(
-        amount,
-        now,
-        userId
+            luck_day = $1,
+            luck_last_claim = $2,
+            wallet = wallet + $3
+        WHERE user_id = $4
+        `,
+        [
+            date,
+            now,
+            amount,
+            userId
+        ]
     );
 
     return {
@@ -710,610 +1359,245 @@ function claimLuck(userId) {
     };
 }
 
-// ============================================================
-// SHOP
-// ============================================================
+/* =========================================================
+   SHOP
+========================================================= */
 
-function getShopItems() {
-    return db.prepare(`
+async function getShopItems() {
+    const result = await pool.query(`
         SELECT *
         FROM shop
         ORDER BY price ASC
-    `).all();
+    `);
+
+    return result.rows;
 }
 
-function getShopItem(item) {
-    return db.prepare(`
-        SELECT *
-        FROM shop
-        WHERE LOWER(item) = LOWER(?)
-    `).get(item);
+async function buyShopItem(userId, item) {
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const shopResult =
+            await client.query(
+                `
+                SELECT *
+                FROM shop
+                WHERE LOWER(item) = LOWER($1)
+                FOR UPDATE
+                `,
+                [item]
+            );
+
+        if (!shopResult.rowCount) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "That item doesn't exist."
+            };
+        }
+
+        const shopItem =
+            shopResult.rows[0];
+
+        const price =
+            Number(shopItem.price);
+
+        await client.query(
+            `
+            INSERT INTO users (
+                user_id,
+                wallet,
+                bank
+            )
+            VALUES ($1, 10000, 0)
+            ON CONFLICT (user_id)
+            DO NOTHING
+            `,
+            [userId]
+        );
+
+        const userResult =
+            await client.query(
+                `
+                SELECT *
+                FROM users
+                WHERE user_id = $1
+                FOR UPDATE
+                `,
+                [userId]
+            );
+
+        const user =
+            userResult.rows[0];
+
+        if (
+            Number(user.wallet) <
+            price
+        ) {
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                reason: "You don't have enough money."
+            };
+        }
+
+        await client.query(
+            `
+            UPDATE users
+            SET wallet = wallet - $1
+            WHERE user_id = $2
+            `,
+            [
+                price,
+                userId
+            ]
+        );
+
+        await client.query(
+            `
+            INSERT INTO inventory (
+                user_id,
+                item,
+                amount
+            )
+            VALUES ($1, $2, 1)
+            ON CONFLICT (user_id, item)
+            DO UPDATE SET
+                amount = inventory.amount + 1
+            `,
+            [
+                userId,
+                shopItem.item
+            ]
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            price
+        };
+    } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
-// ============================================================
-// INVENTORY
-// ============================================================
-
-function addInventoryItem(
-    userId,
-    item,
-    amount = 1
-) {
-    getOrCreateUser(userId);
-
-    db.prepare(`
-        INSERT INTO inventory (
-            user_id,
-            item,
-            amount
-        )
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id, item)
-        DO UPDATE SET
-            amount = amount + excluded.amount
-    `).run(
-        userId,
-        item,
-        Number(amount)
-    );
-
-    return true;
-}
-
-function getInventory(userId) {
-    return db.prepare(`
+async function getInventory(userId) {
+    const result = await pool.query(
+        `
         SELECT *
         FROM inventory
-        WHERE user_id = ?
-        AND amount > 0
+        WHERE user_id = $1
+          AND amount > 0
         ORDER BY item
-    `).all(userId);
+        `,
+        [userId]
+    );
+
+    return result.rows;
 }
 
-// ============================================================
-// RESET BALANCES
-// ============================================================
+/* =========================================================
+   RESET
+========================================================= */
 
-function resetAllBalances(amount = 10000) {
-    amount = Number(amount);
-
-    db.prepare(`
+async function resetBalance(userId) {
+    await pool.query(
+        `
         UPDATE users
         SET
-            wallet = ?,
-            bank = 0
-    `).run(amount);
-}
+            wallet = 10000,
+            bank = 0,
+            daily_claim = 0,
+            weekly_claim = 0,
+            luck_day = NULL,
+            luck_last_claim = 0
+        WHERE user_id = $1
+        `,
+        [userId]
+    );
 
-function resetBalance(
-    userId,
-    amount = 10000
-) {
-    getOrCreateUser(userId);
+    await pool.query(
+        `
+        DELETE FROM holdings
+        WHERE user_id = $1
+        `,
+        [userId]
+    );
 
-    db.prepare(`
-        UPDATE users
-        SET
-            wallet = ?,
-            bank = 0
-        WHERE user_id = ?
-    `).run(
-        Number(amount),
-        userId
+    await pool.query(
+        `
+        DELETE FROM inventory
+        WHERE user_id = $1
+        `,
+        [userId]
     );
 }
 
-// ============================================================
-// MARKET
-// ============================================================
-
-function getAllAssets() {
-    return db.prepare(`
-        SELECT *
-        FROM assets
-        ORDER BY
-            CASE
-                WHEN type = 'crypto' THEN 0
-                ELSE 1
-            END,
-            symbol
-    `).all();
-}
-
-function getAsset(symbol) {
-    return db.prepare(`
-        SELECT *
-        FROM assets
-        WHERE symbol = ?
-    `).get(
-        String(symbol)
-            .trim()
-            .toUpperCase()
-    );
-}
-
-// ============================================================
-// MARKET MOVEMENT
-// ============================================================
-
-function setAssetChange(
-    symbol,
-    changeAmount
-) {
-    symbol = String(symbol)
-        .trim()
-        .toUpperCase();
-
-    const asset = getAsset(symbol);
-
-    if (!asset) {
-        return {
-            success: false,
-            reason: "Asset not found."
-        };
-    }
-
-    const amount = Number(changeAmount);
-
-    if (!Number.isFinite(amount)) {
-        return {
-            success: false,
-            reason: "Invalid market movement."
-        };
-    }
-
-    const oldChange =
-        Number(asset.change_percent || 0);
-
-    const newChange =
-        Math.max(
-            -50,
-            Math.min(
-                500,
-                oldChange + amount
-            )
-        );
-
-    const oldPrice =
-        Number(asset.price);
-
-    const basePrice =
-        Number(asset.base_price);
-
-    const newPrice =
-        basePrice *
-        (1 + newChange / 100);
-
-    const timestamp = Date.now();
+async function resetAll() {
+    const client = await pool.connect();
 
     try {
-        const transaction = db.transaction(() => {
+        await client.query("BEGIN");
 
-            db.prepare(`
-                UPDATE assets
-                SET
-                    previous_price = ?,
-                    price = ?,
-                    change_percent = ?
-                WHERE symbol = ?
-            `).run(
-                oldPrice,
-                newPrice,
-                newChange,
-                symbol
-            );
+        await client.query("DELETE FROM transactions");
+        await client.query("DELETE FROM holdings");
+        await client.query("DELETE FROM inventory");
+        await client.query("DELETE FROM users");
+        await client.query("DELETE FROM market_history");
 
-            db.prepare(`
-                INSERT INTO market_history (
-                    symbol,
-                    price,
-                    change_percent,
-                    timestamp,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-            `).run(
-                symbol,
-                newPrice,
-                newChange,
-                timestamp,
-                new Date().toISOString()
-            );
-        });
-
-        transaction();
-
-    } catch (error) {
-        console.error(
-            `Market update failed for ${symbol}:`,
-            error
-        );
-
-        return {
-            success: false,
-            reason: error.message
-        };
-    }
-
-    return {
-        success: true,
-        oldChange,
-        newChange,
-        oldPrice,
-        newPrice
-    };
-}
-
-const moveAsset = setAssetChange;
-
-// ============================================================
-// RESET MARKET
-// ============================================================
-
-function resetMarket() {
-    const transaction = db.transaction(() => {
-
-        db.prepare(`
+        await client.query(`
             UPDATE assets
             SET
-                previous_price = base_price,
                 price = base_price,
+                previous_price = base_price,
                 change_percent = 0
-        `).run();
+        `);
 
-        db.prepare(`
-            DELETE FROM market_history
-        `).run();
-    });
-
-    transaction();
-}
-
-// ============================================================
-// MARKET HISTORY
-// ============================================================
-
-function getMarketHistory(
-    symbol,
-    limit = 30
-) {
-    symbol = String(symbol)
-        .trim()
-        .toUpperCase();
-
-    return db.prepare(`
-        SELECT *
-        FROM market_history
-        WHERE symbol = ?
-        ORDER BY id DESC
-        LIMIT ?
-    `).all(
-        symbol,
-        Math.max(1, Number(limit))
-    ).reverse();
-}
-
-// ============================================================
-// BUY
-// ============================================================
-
-function buyAsset(
-    userId,
-    symbol,
-    amount
-) {
-    symbol = String(symbol)
-        .trim()
-        .toUpperCase();
-
-    amount = Number(amount);
-
-    const asset = getAsset(symbol);
-
-    if (!asset) {
-        return {
-            success: false,
-            reason: "Asset not found."
-        };
-    }
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-        return {
-            success: false,
-            reason: "Amount must be greater than zero."
-        };
-    }
-
-    const user = getOrCreateUser(userId);
-
-    const price = Number(asset.price);
-    const total = price * amount;
-
-    if (!Number.isFinite(total) || total <= 0) {
-        return {
-            success: false,
-            reason: "Invalid purchase total."
-        };
-    }
-
-    if (Number(user.wallet) < total) {
-        return {
-            success: false,
-            reason: "You don't have enough money."
-        };
-    }
-
-    const existing = db.prepare(`
-        SELECT *
-        FROM holdings
-        WHERE user_id = ?
-        AND symbol = ?
-    `).get(
-        userId,
-        symbol
-    );
-
-    const oldAmount =
-        Number(existing?.amount || 0);
-
-    const oldAverage =
-        Number(existing?.average_price || 0);
-
-    const newAmount =
-        oldAmount + amount;
-
-    const newAverage =
-        (
-            oldAmount * oldAverage +
-            amount * price
-        ) / newAmount;
-
-    try {
-        const transaction = db.transaction(() => {
-
-            db.prepare(`
-                UPDATE users
-                SET wallet = wallet - ?
-                WHERE user_id = ?
-                AND wallet >= ?
-            `).run(
-                total,
-                userId,
-                total
-            );
-
-            db.prepare(`
-                INSERT INTO holdings (
-                    user_id,
-                    symbol,
-                    amount,
-                    average_price
-                )
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id, symbol)
-                DO UPDATE SET
-                    amount = excluded.amount,
-                    average_price = excluded.average_price
-            `).run(
-                userId,
-                symbol,
-                newAmount,
-                newAverage
-            );
-
-            db.prepare(`
-                INSERT INTO transactions (
-                    user_id,
-                    symbol,
-                    type,
-                    amount,
-                    price,
-                    total,
-                    timestamp,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-                userId,
-                symbol,
-                "BUY",
-                amount,
-                price,
-                total,
-                Date.now(),
-                new Date().toISOString()
-            );
-        });
-
-        transaction();
-
+        await client.query("COMMIT");
     } catch (error) {
-        console.error(
-            "BUY DATABASE ERROR:",
-            error
-        );
-
-        return {
-            success: false,
-            reason: error.message
-        };
+        await client.query("ROLLBACK");
+        throw error;
+    } finally {
+        client.release();
     }
-
-    return {
-        success: true,
-        amount,
-        price,
-        total,
-        balance: getOrCreateUser(userId).wallet
-    };
 }
 
-// ============================================================
-// SELL
-// ============================================================
-
-function sellAsset(
-    userId,
-    symbol,
-    amount
-) {
-    symbol = String(symbol)
-        .trim()
-        .toUpperCase();
-
-    amount = Number(amount);
-
-    const asset = getAsset(symbol);
-
-    if (!asset) {
-        return {
-            success: false,
-            reason: "Asset not found."
-        };
-    }
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-        return {
-            success: false,
-            reason: "Amount must be greater than zero."
-        };
-    }
-
-    const holding = db.prepare(`
-        SELECT *
-        FROM holdings
-        WHERE user_id = ?
-        AND symbol = ?
-    `).get(
-        userId,
-        symbol
-    );
-
-    if (!holding) {
-        return {
-            success: false,
-            reason: `You don't own any ${symbol}.`
-        };
-    }
-
-    const owned =
-        Number(holding.amount || 0);
-
-    if (amount > owned) {
-        return {
-            success: false,
-            reason: `You only own ${owned} ${symbol}.`
-        };
-    }
-
-    const price = Number(asset.price);
-    const total = price * amount;
-
-    const remaining =
-        owned - amount;
-
-    try {
-        const transaction = db.transaction(() => {
-
-            db.prepare(`
-                UPDATE users
-                SET wallet = wallet + ?
-                WHERE user_id = ?
-            `).run(
-                total,
-                userId
-            );
-
-            if (remaining <= 0) {
-
-                db.prepare(`
-                    DELETE FROM holdings
-                    WHERE user_id = ?
-                    AND symbol = ?
-                `).run(
-                    userId,
-                    symbol
-                );
-
-            } else {
-
-                db.prepare(`
-                    UPDATE holdings
-                    SET amount = ?
-                    WHERE user_id = ?
-                    AND symbol = ?
-                `).run(
-                    remaining,
-                    userId,
-                    symbol
-                );
-            }
-
-            db.prepare(`
-                INSERT INTO transactions (
-                    user_id,
-                    symbol,
-                    type,
-                    amount,
-                    price,
-                    total,
-                    timestamp,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-                userId,
-                symbol,
-                "SELL",
-                amount,
-                price,
-                total,
-                Date.now(),
-                new Date().toISOString()
-            );
-        });
-
-        transaction();
-
-    } catch (error) {
-        console.error(
-            "SELL DATABASE ERROR:",
-            error
-        );
-
-        return {
-            success: false,
-            reason: error.message
-        };
-    }
-
-    return {
-        success: true,
-        amount,
-        price,
-        total,
-        balance: getOrCreateUser(userId).wallet
-    };
-}
-
-// ============================================================
-// EXPORTS
-// ============================================================
+/* =========================================================
+   EXPORTS
+========================================================= */
 
 module.exports = {
-    db,
+    initDatabase,
 
     getOrCreateUser,
 
-    withdraw,
     addWallet,
+    removeWallet,
 
     deposit,
-    withdrawBank,
+    withdraw,
 
-    getNetWorth,
+    getAllAssets,
+    getAsset,
+
+    setAssetChange,
+    resetMarket,
+    getMarketHistory,
 
     getPortfolio,
+    getNetWorth,
+
+    buyAsset,
+    sellAsset,
+
     getTransactions,
     getLeaderboard,
 
@@ -1322,23 +1606,9 @@ module.exports = {
     claimLuck,
 
     getShopItems,
-    getShopItem,
-
-    addInventoryItem,
+    buyShopItem,
     getInventory,
 
-    resetAllBalances,
     resetBalance,
-
-    getAllAssets,
-    getAsset,
-
-    setAssetChange,
-    moveAsset,
-
-    getMarketHistory,
-    resetMarket,
-
-    buyAsset,
-    sellAsset
+    resetAll
 };
