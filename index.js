@@ -26,8 +26,18 @@ const OWNERS = [
     "1300582883873787960"
 ];
 
-const CO_OWNER = "1388444379743785071";
-const PORT = Number(process.env.PORT) || 10000;
+const CO_OWNER =
+    "1388444379743785071";
+
+const PORT =
+    Number(process.env.PORT) || 10000;
+
+/*
+   MARKET UPDATE:
+   Every 2 minutes.
+*/
+const MARKET_UPDATE_INTERVAL =
+    2 * 60 * 1000;
 
 const ASSET_ICONS = {
     BTC: "₿",
@@ -85,20 +95,32 @@ const SHOP_ICONS = {
 };
 
 /* =========================================================
-   RENDER
+   WEB SERVER
 ========================================================= */
 
-const server = http.createServer((req, res) => {
-    res.writeHead(200, {
-        "Content-Type": "text/plain"
-    });
+const server =
+    http.createServer(
+        (req, res) => {
+            res.writeHead(200, {
+                "Content-Type":
+                    "text/plain"
+            });
 
-    res.end("MarketBot is online!");
-});
+            res.end(
+                "MarketBot is online!"
+            );
+        }
+    );
 
-server.listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 Web server listening on port ${PORT}`);
-});
+server.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+        console.log(
+            `🌐 Web server listening on port ${PORT}`
+        );
+    }
+);
 
 /* =========================================================
    HELPERS
@@ -106,66 +128,122 @@ server.listen(PORT, "0.0.0.0", () => {
 
 function num(value) {
     const n = Number(value);
-    return Number.isFinite(n) ? n : 0;
+
+    return Number.isFinite(n)
+        ? n
+        : 0;
 }
 
 function money(value) {
-    return num(value).toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
+    return num(value).toLocaleString(
+        "en-US",
+        {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }
+    );
 }
 
 function formatAmount(value) {
-    return num(value).toLocaleString("en-US", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 6
-    });
-}
-
-function formatPrice(value) {
     const n = num(value);
 
+    if (Number.isInteger(n)) {
+        return n.toLocaleString(
+            "en-US"
+        );
+    }
+
+    return n.toLocaleString(
+        "en-US",
+        {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 4
+        }
+    );
+}
+
+/*
+   Prices are now deliberately clean.
+
+   >= 1,000,000 -> $1.25M
+   >= 1,000     -> $1,250.00
+   >= 1         -> $1.25
+
+   Nothing below $1 should exist.
+*/
+function formatPrice(value) {
+    const n =
+        Math.max(
+            1,
+            num(value)
+        );
+
     if (n >= 1_000_000_000) {
-        return `$${(n / 1_000_000_000).toFixed(2)}B`;
+        return `$${(
+            n / 1_000_000_000
+        ).toFixed(2)}B`;
     }
 
     if (n >= 1_000_000) {
-        return `$${(n / 1_000_000).toFixed(2)}M`;
+        return `$${(
+            n / 1_000_000
+        ).toFixed(2)}M`;
     }
 
-    if (n >= 1_000) {
-        return `$${n.toLocaleString("en-US", {
+    return `$${n.toLocaleString(
+        "en-US",
+        {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
-        })}`;
-    }
-
-    if (n >= 1) {
-        return `$${n.toFixed(2)}`;
-    }
-
-    return `$${n.toFixed(4)}`;
+        }
+    )}`;
 }
 
 function percent(value) {
     const n = num(value);
 
-    if (n > 0) return `+${n.toFixed(2)}%`;
+    if (n > 0) {
+        return `+${n.toFixed(2)}%`;
+    }
 
     return `${n.toFixed(2)}%`;
 }
 
+function profitText(value) {
+    const n = num(value);
+
+    if (n > 0) {
+        return `+$${money(n)}`;
+    }
+
+    if (n < 0) {
+        return `-$${money(Math.abs(n))}`;
+    }
+
+    return "$0.00";
+}
+
 function cleanSymbol(value) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+        .trim()
+        .toUpperCase();
 }
 
 function assetIcon(symbol) {
-    return ASSET_ICONS[cleanSymbol(symbol)] || "◆";
+    return (
+        ASSET_ICONS[
+            cleanSymbol(symbol)
+        ] || "◆"
+    );
 }
 
 function shopIcon(item) {
-    return SHOP_ICONS[String(item || "").toLowerCase()] || "📦";
+    return (
+        SHOP_ICONS[
+            String(item || "")
+                .toLowerCase()
+        ] || "📦"
+    );
 }
 
 function parseAmount(value) {
@@ -184,7 +262,10 @@ function isOwner(id) {
 }
 
 function isStaff(id) {
-    return isOwner(id) || id === CO_OWNER;
+    return (
+        isOwner(id) ||
+        id === CO_OWNER
+    );
 }
 
 function directionIcon(change) {
@@ -206,61 +287,86 @@ function directionArrow(change) {
 }
 
 function findAsset(symbol) {
-    return db.getAsset(cleanSymbol(symbol));
+    return db.getAsset(
+        cleanSymbol(symbol)
+    );
 }
 
 function makeGraph(history) {
-    if (!history || history.length < 2) {
+    if (
+        !history ||
+        history.length < 2
+    ) {
         return "▁▁▁▁▁▁▁▁▁▁";
     }
 
-    const bars = "▁▂▃▄▅▆▇█";
+    const bars =
+        "▁▂▃▄▅▆▇█";
 
-    const values = history
-        .map(x => num(x.price))
-        .slice(-24);
+    const values =
+        history
+            .map(x =>
+                num(x.price)
+            )
+            .slice(-24);
 
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min =
+        Math.min(...values);
+
+    const max =
+        Math.max(...values);
 
     if (min === max) {
-        return "▄".repeat(values.length);
+        return "▄".repeat(
+            values.length
+        );
     }
 
-    return values.map(value => {
-        const ratio =
-            (value - min) /
-            (max - min);
+    return values
+        .map(value => {
+            const ratio =
+                (value - min) /
+                (max - min);
 
-        const index = Math.max(
-            0,
-            Math.min(
-                bars.length - 1,
-                Math.round(
-                    ratio * (bars.length - 1)
-                )
-            )
-        );
+            const index =
+                Math.max(
+                    0,
+                    Math.min(
+                        bars.length - 1,
+                        Math.round(
+                            ratio *
+                            (bars.length - 1)
+                        )
+                    )
+                );
 
-        return bars[index];
-    }).join("");
+            return bars[index];
+        })
+        .join("");
 }
 
 function timeLeft(timestamp) {
     const difference =
         Math.max(
             0,
-            Number(timestamp) - Date.now()
+            Number(timestamp) -
+            Date.now()
         );
 
     const seconds =
-        Math.floor(difference / 1000);
+        Math.floor(
+            difference / 1000
+        );
 
     const hours =
-        Math.floor(seconds / 3600);
+        Math.floor(
+            seconds / 3600
+        );
 
     const minutes =
-        Math.floor((seconds % 3600) / 60);
+        Math.floor(
+            (seconds % 3600) / 60
+        );
 
     const secs =
         seconds % 60;
@@ -284,35 +390,48 @@ function businessSlug(value) {
 }
 
 /* =========================================================
-   MARKET
+   MARKET EMBED
 ========================================================= */
 
 async function createMarketEmbed() {
-    const assets = await db.getAllAssets();
+    const assets =
+        await db.getAllAssets();
 
-    const crypto = assets.filter(
-        a => String(a.type).toLowerCase() === "crypto"
-    );
+    const crypto =
+        assets.filter(
+            a =>
+                String(a.type)
+                    .toLowerCase() ===
+                "crypto"
+        );
 
-    const stocks = assets.filter(
-        a => String(a.type).toLowerCase() === "stock"
-    );
+    const stocks =
+        assets.filter(
+            a =>
+                String(a.type)
+                    .toLowerCase() ===
+                "stock"
+        );
 
     const lines = list => {
         if (!list.length) {
             return "No assets available.";
         }
 
-        return list.map(asset => {
-            const change =
-                num(asset.change_percent);
+        return list
+            .map(asset => {
+                const change =
+                    num(
+                        asset.change_percent
+                    );
 
-            return (
-                `${assetIcon(asset.symbol)} **${asset.symbol}** \`${asset.name}\`\n` +
-                `> **${formatPrice(asset.price)}**  ` +
-                `${directionIcon(change)} ${directionArrow(change)} **${percent(change)}**`
-            );
-        }).join("\n\n");
+                return (
+                    `${assetIcon(asset.symbol)} **${asset.symbol}** \`${asset.name}\`\n` +
+                    `> **${formatPrice(asset.price)}**  ` +
+                    `${directionIcon(change)} ${directionArrow(change)} **${percent(change)}**`
+                );
+            })
+            .join("\n\n");
     };
 
     return new EmbedBuilder()
@@ -321,7 +440,8 @@ async function createMarketEmbed() {
         .setDescription(
             "━━━━━━━━━━━━━━━━━━━━\n" +
             "**LIVE VIRTUAL MARKET**\n" +
-            "Prices update every 30 seconds.\n" +
+            "Prices update every **2 minutes**.\n" +
+            "Every asset has a **$1.00 minimum price**.\n" +
             "━━━━━━━━━━━━━━━━━━━━"
         )
         .addFields(
@@ -337,7 +457,8 @@ async function createMarketEmbed() {
             }
         )
         .setFooter({
-            text: "MarketBot • Virtual Economy"
+            text:
+                "MarketBot • Virtual Economy"
         })
         .setTimestamp();
 }
@@ -346,20 +467,30 @@ async function createMarketEmbed() {
    BALANCE
 ========================================================= */
 
-async function createBalanceEmbed(userId, user) {
+async function createBalanceEmbed(
+    userId,
+    user
+) {
     const account =
-        await db.getOrCreateUser(userId);
+        await db.getOrCreateUser(
+            userId
+        );
 
     const portfolio =
-        await db.getPortfolio(userId);
+        await db.getPortfolio(
+            userId
+        );
 
     const businesses =
-        await db.getBusinesses(userId);
+        await db.getBusinesses(
+            userId
+        );
 
     const investments =
         portfolio.reduce(
             (total, item) =>
-                total + num(item.value),
+                total +
+                num(item.value),
             0
         );
 
@@ -368,12 +499,18 @@ async function createBalanceEmbed(userId, user) {
             (total, business) =>
                 total +
                 num(business.price) *
-                num(business.level || 1),
+                num(
+                    business.level ||
+                    1
+                ),
             0
         );
 
-    const wallet = num(account.wallet);
-    const bank = num(account.bank);
+    const wallet =
+        num(account.wallet);
+
+    const bank =
+        num(account.bank);
 
     const netWorth =
         wallet +
@@ -398,26 +535,31 @@ async function createBalanceEmbed(userId, user) {
         .addFields(
             {
                 name: "🪙  Wallet",
-                value: `**${money(wallet)}**`,
+                value:
+                    `**${money(wallet)}**`,
                 inline: true
             },
             {
                 name: "🏦  Bank",
-                value: `**${money(bank)}**`,
+                value:
+                    `**${money(bank)}**`,
                 inline: true
             },
             {
                 name: "📈  Investments",
-                value: `**${money(investments)}**`,
+                value:
+                    `**${money(investments)}**`,
                 inline: true
             },
             {
                 name: "🏢  Businesses",
-                value: `**${money(businessValue)}**`,
+                value:
+                    `**${money(businessValue)}**`,
                 inline: true
             },
             {
-                name: "💎  NET WORTH",
+                name:
+                    "💎  NET WORTH",
                 value:
                     `\`\`\`fix\n` +
                     `${CURRENCY} ${money(netWorth)}\n` +
@@ -436,14 +578,20 @@ async function createBalanceEmbed(userId, user) {
    PORTFOLIO
 ========================================================= */
 
-async function createPortfolioEmbed(userId) {
+async function createPortfolioEmbed(
+    userId
+) {
     const portfolio =
-        await db.getPortfolio(userId);
+        await db.getPortfolio(
+            userId
+        );
 
     if (!portfolio.length) {
         return new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle("📊  PORTFOLIO")
+            .setTitle(
+                "📊  PORTFOLIO"
+            )
             .setDescription(
                 "Your portfolio is currently empty.\n\n" +
                 "Use `!buy BTC 1` to start investing."
@@ -458,14 +606,37 @@ async function createPortfolioEmbed(userId) {
     const totalValue =
         portfolio.reduce(
             (sum, item) =>
-                sum + num(item.value),
+                sum +
+                num(item.value),
             0
         );
+
+    const totalInvested =
+        portfolio.reduce(
+            (sum, item) =>
+                sum +
+                num(item.invested),
+            0
+        );
+
+    const totalProfit =
+        totalValue -
+        totalInvested;
+
+    const totalProfitPercent =
+        totalInvested > 0
+            ? (
+                totalProfit /
+                totalInvested
+            ) * 100
+            : 0;
 
     const lines =
         portfolio.map(item => {
             const symbol =
-                cleanSymbol(item.symbol);
+                cleanSymbol(
+                    item.symbol
+                );
 
             const amount =
                 num(item.amount);
@@ -474,39 +645,78 @@ async function createPortfolioEmbed(userId) {
                 num(item.price);
 
             const average =
-                num(item.average_price);
+                num(
+                    item.average_price
+                );
+
+            const invested =
+                num(item.invested);
 
             const value =
                 num(item.value);
 
             const profit =
-                (current - average) *
-                amount;
+                num(
+                    item.profit_loss
+                );
+
+            const profitPercent =
+                num(
+                    item.profit_loss_percent
+                );
 
             return (
                 `${assetIcon(symbol)} **${symbol}**\n` +
-                `> Amount: **${formatAmount(amount)}**\n` +
+                `> Holdings: **${formatAmount(amount)}**\n` +
+                `> Avg. Buy: **${formatPrice(average)}**\n` +
+                `> Current: **${formatPrice(current)}**\n` +
+                `> Invested: **${formatPrice(invested)}**\n` +
                 `> Value: **${formatPrice(value)}**\n` +
-                `> P/L: ${directionIcon(profit)} **${formatPrice(profit)}**`
+                `> P/L: ${directionIcon(profit)} **${profitText(profit)}** (${percent(profitPercent)})`
             );
         });
 
     return new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setTitle("📊  PORTFOLIO")
+        .setColor(
+            totalProfit > 0
+                ? 0x57F287
+                : totalProfit < 0
+                    ? 0xED4245
+                    : 0x5865F2
+        )
+        .setTitle(
+            "📊  INVESTMENT PORTFOLIO"
+        )
         .setDescription(
             lines.join("\n\n")
         )
-        .addFields({
-            name:
-                "💎 Total Portfolio Value",
-            value:
-                `**${formatPrice(totalValue)}**`,
-            inline: false
-        })
+        .addFields(
+            {
+                name:
+                    "💵 Total Invested",
+                value:
+                    `**${formatPrice(totalInvested)}**`,
+                inline: true
+            },
+            {
+                name:
+                    "📊 Current Value",
+                value:
+                    `**${formatPrice(totalValue)}**`,
+                inline: true
+            },
+            {
+                name:
+                    "📈 Total P/L",
+                value:
+                    `${directionIcon(totalProfit)} **${profitText(totalProfit)}**\n` +
+                    `(${percent(totalProfitPercent)})`,
+                inline: true
+            }
+        )
         .setFooter({
             text:
-                "MarketBot • Virtual Investments"
+                "Invested = your cost basis • P/L = current value − invested"
         })
         .setTimestamp();
 }
@@ -515,7 +725,9 @@ async function createPortfolioEmbed(userId) {
    INFO
 ========================================================= */
 
-async function createInfoEmbed(symbol) {
+async function createInfoEmbed(
+    symbol
+) {
     const asset =
         await findAsset(symbol);
 
@@ -528,7 +740,9 @@ async function createInfoEmbed(symbol) {
         );
 
     const prices =
-        history.map(x => num(x.price));
+        history.map(
+            x => num(x.price)
+        );
 
     const high =
         prices.length
@@ -537,11 +751,16 @@ async function createInfoEmbed(symbol) {
 
     const low =
         prices.length
-            ? Math.min(...prices)
+            ? Math.max(
+                1,
+                Math.min(...prices)
+            )
             : num(asset.price);
 
     const change =
-        num(asset.change_percent);
+        num(
+            asset.change_percent
+        );
 
     return new EmbedBuilder()
         .setColor(
@@ -608,7 +827,9 @@ async function createInfoEmbed(symbol) {
    HISTORY
 ========================================================= */
 
-async function createHistoryEmbed(symbol) {
+async function createHistoryEmbed(
+    symbol
+) {
     const asset =
         await findAsset(symbol);
 
@@ -633,23 +854,33 @@ async function createHistoryEmbed(symbol) {
     }
 
     const prices =
-        history.map(x => num(x.price));
+        history.map(
+            x => num(x.price)
+        );
 
     const first =
         prices[0];
 
     const current =
-        prices[prices.length - 1];
+        prices[
+            prices.length - 1
+        ];
 
     const high =
         Math.max(...prices);
 
     const low =
-        Math.min(...prices);
+        Math.max(
+            1,
+            Math.min(...prices)
+        );
 
     const movement =
         first !== 0
-            ? ((current - first) / first) * 100
+            ? (
+                (current - first) /
+                first
+            ) * 100
             : 0;
 
     return new EmbedBuilder()
@@ -718,7 +949,9 @@ async function createShopEmbed() {
             categories[item.category] = [];
         }
 
-        categories[item.category].push(item);
+        categories[
+            item.category
+        ].push(item);
     }
 
     const embeds = [];
@@ -731,26 +964,40 @@ async function createShopEmbed() {
         "Lifestyle"
     ];
 
-    for (const category of categoryOrder) {
-        const list = categories[category];
+    for (
+        const category of
+        categoryOrder
+    ) {
+        const list =
+            categories[category];
 
-        if (!list || !list.length) continue;
+        if (
+            !list ||
+            !list.length
+        ) continue;
 
-        const lines = list.map(item =>
-            `${shopIcon(item.item)} **${item.item}**\n` +
-            `> ${CURRENCY} **${money(item.price)}**`
-        );
+        const lines =
+            list.map(item =>
+                `${shopIcon(item.item)} **${item.item}**\n` +
+                `> ${CURRENCY} **${money(item.price)}**`
+            );
 
         embeds.push({
-            name: `━━ ${category.toUpperCase()} ━━`,
-            value: lines.join("\n\n"),
+            name:
+                `━━ ${category.toUpperCase()} ━━`,
+            value:
+                lines.join(
+                    "\n\n"
+                ),
             inline: false
         });
     }
 
     return new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle("🛒  MARKETBOT SHOP")
+        .setTitle(
+            "🛒  MARKETBOT SHOP"
+        )
         .setDescription(
             "Buy virtual items and build your collection.\n\n" +
             "Use `!shop buy <item>` to purchase."
@@ -767,51 +1014,62 @@ async function createShopEmbed() {
    BUSINESSES
 ========================================================= */
 
-async function createBusinessEmbed(userId) {
+async function createBusinessEmbed(
+    userId
+) {
     const owned =
-        await db.getBusinesses(userId);
+        await db.getBusinesses(
+            userId
+        );
 
     const all =
         await db.getAllBusinesses();
 
-    const lines = all.map(business => {
-        const ownedBusiness =
-            owned.find(
-                x =>
-                    x.slug === business.slug
-            );
-
-        if (ownedBusiness) {
-            const level =
-                Number(ownedBusiness.level);
-
-            const income =
-                Number(
-                    ownedBusiness.income_per_hour
+    const lines =
+        all.map(business => {
+            const ownedBusiness =
+                owned.find(
+                    x =>
+                        x.slug ===
+                        business.slug
                 );
 
-            return (
-                `${business.icon} **${business.name}**  •  **OWNED**\n` +
-                `> Level **${level}** • ${CURRENCY} **${money(income)}/hr**`
-            );
-        }
+            if (ownedBusiness) {
+                const level =
+                    Number(
+                        ownedBusiness.level
+                    );
 
-        return (
-            `${business.icon} **${business.name}**\n` +
-            `> Buy: ${CURRENCY} **${money(business.price)}** • ` +
-            `Income: **${money(business.base_income)}/hr**`
-        );
-    });
+                const income =
+                    Number(
+                        ownedBusiness.income_per_hour
+                    );
+
+                return (
+                    `${business.icon} **${business.name}** • **OWNED**\n` +
+                    `> Level **${level}** • ${CURRENCY} **${money(income)}/hr**`
+                );
+            }
+
+            return (
+                `${business.icon} **${business.name}**\n` +
+                `> Buy: ${CURRENCY} **${money(business.price)}** • ` +
+                `Income: **${money(business.base_income)}/hr**`
+            );
+        });
 
     return new EmbedBuilder()
         .setColor(0x57F287)
-        .setTitle("🏢  BUSINESS EMPIRE")
+        .setTitle(
+            "🏢  BUSINESS EMPIRE"
+        )
         .setDescription(
             "Buy businesses and generate passive virtual income.\n\n" +
             lines.join("\n\n")
         )
         .addFields({
-            name: "📋 Commands",
+            name:
+                "📋 Commands",
             value:
                 "`!business buy <business>`\n" +
                 "`!business collect [business]`\n" +
@@ -826,14 +1084,20 @@ async function createBusinessEmbed(userId) {
         .setTimestamp();
 }
 
-async function createOwnedBusinessEmbed(userId) {
+async function createOwnedBusinessEmbed(
+    userId
+) {
     const businesses =
-        await db.getBusinesses(userId);
+        await db.getBusinesses(
+            userId
+        );
 
     if (!businesses.length) {
         return new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle("🏢  YOUR BUSINESSES")
+            .setTitle(
+                "🏢  YOUR BUSINESSES"
+            )
             .setDescription(
                 "You don't own any businesses yet.\n\n" +
                 "Use `!business` to view available businesses."
@@ -842,43 +1106,49 @@ async function createOwnedBusinessEmbed(userId) {
     }
 
     const lines =
-        businesses.map(business => {
-            const level =
-                Number(business.level);
+        businesses.map(
+            business => {
+                const level =
+                    Number(
+                        business.level
+                    );
 
-            const income =
-                Number(business.income_per_hour);
+                const income =
+                    Number(
+                        business.income_per_hour
+                    );
 
-            const generated =
-                Number(
-                    business.generated || 0
+                return (
+                    `${business.icon} **${business.name}**\n` +
+                    `> Level: **${level}**\n` +
+                    `> Income: **${money(income)}/hr**`
                 );
-
-            return (
-                `${business.icon} **${business.name}**\n` +
-                `> Level: **${level}**\n` +
-                `> Income: **${money(income)}/hr**\n` +
-                `> Available: **${money(generated)}** ${CURRENCY}`
-            );
-        });
+            }
+        );
 
     const value =
         businesses.reduce(
             (sum, business) =>
                 sum +
                 num(business.price) *
-                num(business.level || 1),
+                num(
+                    business.level ||
+                    1
+                ),
             0
         );
 
     return new EmbedBuilder()
         .setColor(0x57F287)
-        .setTitle("🏢  YOUR BUSINESS EMPIRE")
+        .setTitle(
+            "🏢  YOUR BUSINESS EMPIRE"
+        )
         .setDescription(
             lines.join("\n\n")
         )
         .addFields({
-            name: "🏦 Business Value",
+            name:
+                "🏦 Business Value",
             value:
                 `**${money(value)}** ${CURRENCY}`,
             inline: false
@@ -897,7 +1167,9 @@ async function createOwnedBusinessEmbed(userId) {
 function createHelpEmbed() {
     return new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle("📖  MARKETBOT")
+        .setTitle(
+            "📖  MARKETBOT"
+        )
         .setDescription(
             "━━━━━━━━━━━━━━━━━━━━\n" +
             "**COMMAND CENTER**\n" +
@@ -905,7 +1177,8 @@ function createHelpEmbed() {
         )
         .addFields(
             {
-                name: "💰 FINANCES",
+                name:
+                    "💰 FINANCES",
                 value:
                     "`!balance` — Balance + net worth\n" +
                     "`!deposit <amount>` — Deposit\n" +
@@ -914,7 +1187,8 @@ function createHelpEmbed() {
                 inline: false
             },
             {
-                name: "📈 MARKET",
+                name:
+                    "📈 MARKET",
                 value:
                     "`!market` — Live market\n" +
                     "`!info <asset>` — Asset details\n" +
@@ -922,14 +1196,16 @@ function createHelpEmbed() {
                 inline: false
             },
             {
-                name: "💱 TRADING",
+                name:
+                    "💱 TRADING",
                 value:
                     "`!buy <asset> <amount|all>` — Buy\n" +
                     "`!sell <asset> <amount|all>` — Sell",
                 inline: false
             },
             {
-                name: "🏢 BUSINESSES",
+                name:
+                    "🏢 BUSINESSES",
                 value:
                     "`!business` — Business empire\n" +
                     "`!business buy <business>` — Buy\n" +
@@ -939,7 +1215,8 @@ function createHelpEmbed() {
                 inline: false
             },
             {
-                name: "🎁 REWARDS",
+                name:
+                    "🎁 REWARDS",
                 value:
                     "`!daily` — Daily reward\n" +
                     "`!weekly` — Weekly reward\n" +
@@ -947,7 +1224,8 @@ function createHelpEmbed() {
                 inline: false
             },
             {
-                name: "🛒 SHOP",
+                name:
+                    "🛒 SHOP",
                 value:
                     "`!shop` — View shop\n" +
                     "`!shop buy <item>` — Purchase\n" +
@@ -955,7 +1233,8 @@ function createHelpEmbed() {
                 inline: false
             },
             {
-                name: "🏆 OTHER",
+                name:
+                    "🏆 OTHER",
                 value:
                     "`!leaderboard` — Leaderboard\n" +
                     "`!transactions` — Transactions\n" +
@@ -976,7 +1255,9 @@ function createHelpEmbed() {
 let marketUpdating = false;
 
 async function updateMarket() {
-    if (marketUpdating) return;
+    if (marketUpdating) {
+        return;
+    }
 
     marketUpdating = true;
 
@@ -987,11 +1268,22 @@ async function updateMarket() {
         let updated = 0;
 
         for (const asset of assets) {
+
+            /*
+               Small realistic movement.
+
+               Every asset gets exactly ONE
+               movement during this cycle.
+
+               Range:
+               -2.50% to +2.50%
+            */
+
             const movement =
-                (Math.random() * 3.5 + 0.5) *
-                (Math.random() < 0.5
-                    ? -1
-                    : 1);
+                (
+                    Math.random() *
+                    5
+                ) - 2.5;
 
             try {
                 const result =
@@ -1000,30 +1292,36 @@ async function updateMarket() {
                         movement
                     );
 
-                if (result?.success) {
+                if (
+                    result &&
+                    result.success
+                ) {
                     updated++;
 
                     console.log(
                         `[MARKET] ${asset.symbol}: ` +
-                        `${percent(result.oldChange)} -> ` +
-                        `${percent(result.newChange)}`
+                        `${formatPrice(result.oldPrice)} -> ` +
+                        `${formatPrice(result.newPrice)} ` +
+                        `(${movement >= 0 ? "+" : ""}${movement.toFixed(2)}%)`
                     );
                 }
             } catch (error) {
                 console.error(
                     `[MARKET] ${asset.symbol} failed:`,
-                    error?.stack || error
+                    error?.stack ||
+                    error
                 );
             }
         }
 
         console.log(
-            `[MARKET] Updated ${updated} assets.`
+            `[MARKET] Updated ${updated}/${assets.length} assets.`
         );
     } catch (error) {
         console.error(
             "[MARKET] Update failed:",
-            error?.stack || error
+            error?.stack ||
+            error
         );
     } finally {
         marketUpdating = false;
@@ -1037,9 +1335,15 @@ async function updateMarket() {
 client.on(
     "messageCreate",
     async message => {
-        if (message.author.bot) return;
+        if (message.author.bot) {
+            return;
+        }
 
-        if (!message.content.startsWith(PREFIX)) {
+        if (
+            !message.content.startsWith(
+                PREFIX
+            )
+        ) {
             return;
         }
 
@@ -1048,19 +1352,26 @@ client.on(
                 .slice(PREFIX.length)
                 .trim();
 
-        if (!content) return;
+        if (!content) {
+            return;
+        }
 
         const args =
             content.split(/\s+/);
 
         const command =
-            args.shift().toLowerCase();
+            args.shift()
+                .toLowerCase();
 
         try {
 
-            /* MARKET */
+            /* =================================================
+               MARKET
+            ================================================= */
 
-            if (command === "market") {
+            if (
+                command === "market"
+            ) {
                 return message.reply({
                     embeds: [
                         await createMarketEmbed()
@@ -1068,9 +1379,13 @@ client.on(
                 });
             }
 
-            if (command === "info") {
+            if (
+                command === "info"
+            ) {
                 const symbol =
-                    cleanSymbol(args[0]);
+                    cleanSymbol(
+                        args[0]
+                    );
 
                 if (!symbol) {
                     return message.reply(
@@ -1094,9 +1409,13 @@ client.on(
                 });
             }
 
-            if (command === "history") {
+            if (
+                command === "history"
+            ) {
                 const symbol =
-                    cleanSymbol(args[0]);
+                    cleanSymbol(
+                        args[0]
+                    );
 
                 if (!symbol) {
                     return message.reply(
@@ -1120,7 +1439,9 @@ client.on(
                 });
             }
 
-            /* BALANCE */
+            /* =================================================
+               BALANCE
+            ================================================= */
 
             if (
                 command === "balance" ||
@@ -1136,7 +1457,9 @@ client.on(
                 });
             }
 
-            /* PORTFOLIO */
+            /* =================================================
+               PORTFOLIO
+            ================================================= */
 
             if (
                 command === "portfolio" ||
@@ -1152,17 +1475,23 @@ client.on(
                 });
             }
 
-            /* DEPOSIT */
+            /* =================================================
+               DEPOSIT
+            ================================================= */
 
             if (
                 command === "deposit" ||
                 command === "dep"
             ) {
                 const amount =
-                    parseAmount(args[0]);
+                    parseAmount(
+                        args[0]
+                    );
 
                 if (
-                    !Number.isFinite(amount) ||
+                    !Number.isFinite(
+                        amount
+                    ) ||
                     amount <= 0
                 ) {
                     return message.reply(
@@ -1187,17 +1516,23 @@ client.on(
                 );
             }
 
-            /* WITHDRAW */
+            /* =================================================
+               WITHDRAW
+            ================================================= */
 
             if (
                 command === "withdraw" ||
                 command === "with"
             ) {
                 const amount =
-                    parseAmount(args[0]);
+                    parseAmount(
+                        args[0]
+                    );
 
                 if (
-                    !Number.isFinite(amount) ||
+                    !Number.isFinite(
+                        amount
+                    ) ||
                     amount <= 0
                 ) {
                     return message.reply(
@@ -1222,23 +1557,36 @@ client.on(
                 );
             }
 
-            /* BUY */
+            /* =================================================
+               BUY
+            ================================================= */
 
-            if (command === "buy") {
+            if (
+                command === "buy"
+            ) {
                 const symbol =
-                    cleanSymbol(args[0]);
+                    cleanSymbol(
+                        args[0]
+                    );
 
                 const requested =
-                    String(args[1] || "");
+                    String(
+                        args[1] || ""
+                    );
 
-                if (!symbol || !requested) {
+                if (
+                    !symbol ||
+                    !requested
+                ) {
                     return message.reply(
                         "❌ Usage: `!buy <asset> <amount|all>`"
                     );
                 }
 
                 const asset =
-                    await findAsset(symbol);
+                    await findAsset(
+                        symbol
+                    );
 
                 if (!asset) {
                     return message.reply(
@@ -1254,13 +1602,21 @@ client.on(
                 let amount;
 
                 if (
-                    requested.toLowerCase() ===
+                    requested
+                        .toLowerCase() ===
                     "all"
                 ) {
                     amount =
                         Math.floor(
-                            num(user.wallet) /
-                            num(asset.price)
+                            num(
+                                user.wallet
+                            ) /
+                            Math.max(
+                                1,
+                                num(
+                                    asset.price
+                                )
+                            )
                         );
                 } else {
                     amount =
@@ -1270,7 +1626,9 @@ client.on(
                 }
 
                 if (
-                    !Number.isFinite(amount) ||
+                    !Number.isFinite(
+                        amount
+                    ) ||
                     amount <= 0
                 ) {
                     return message.reply(
@@ -1293,28 +1651,41 @@ client.on(
 
                 return message.reply(
                     `🟢 Bought **${formatAmount(amount)} ${symbol}**\n` +
-                    `💸 Cost: **${formatPrice(result.total)}** ${CURRENCY}\n` +
+                    `💸 Invested: **${formatPrice(result.total)}** ${CURRENCY}\n` +
                     `💰 Wallet: **${formatPrice(result.balance)}** ${CURRENCY}`
                 );
             }
 
-            /* SELL */
+            /* =================================================
+               SELL
+            ================================================= */
 
-            if (command === "sell") {
+            if (
+                command === "sell"
+            ) {
                 const symbol =
-                    cleanSymbol(args[0]);
+                    cleanSymbol(
+                        args[0]
+                    );
 
                 const requested =
-                    String(args[1] || "");
+                    String(
+                        args[1] || ""
+                    );
 
-                if (!symbol || !requested) {
+                if (
+                    !symbol ||
+                    !requested
+                ) {
                     return message.reply(
                         "❌ Usage: `!sell <asset> <amount|all>`"
                     );
                 }
 
                 const asset =
-                    await findAsset(symbol);
+                    await findAsset(
+                        symbol
+                    );
 
                 if (!asset) {
                     return message.reply(
@@ -1325,7 +1696,8 @@ client.on(
                 let amount;
 
                 if (
-                    requested.toLowerCase() ===
+                    requested
+                        .toLowerCase() ===
                     "all"
                 ) {
                     const portfolio =
@@ -1343,7 +1715,9 @@ client.on(
 
                     amount =
                         holding
-                            ? num(holding.amount)
+                            ? num(
+                                holding.amount
+                            )
                             : 0;
                 } else {
                     amount =
@@ -1353,7 +1727,9 @@ client.on(
                 }
 
                 if (
-                    !Number.isFinite(amount) ||
+                    !Number.isFinite(
+                        amount
+                    ) ||
                     amount <= 0
                 ) {
                     return message.reply(
@@ -1374,19 +1750,78 @@ client.on(
                     );
                 }
 
-                return message.reply(
-                    `🔴 Sold **${formatAmount(amount)} ${symbol}**\n` +
-                    `💵 Received: **${formatPrice(result.total)}** ${CURRENCY}\n` +
-                    `💰 Wallet: **${formatPrice(result.balance)}** ${CURRENCY}`
-                );
+                const pnl =
+                    num(
+                        result.profitLoss
+                    );
+
+                return message.reply({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(
+                                pnl > 0
+                                    ? 0x57F287
+                                    : pnl < 0
+                                        ? 0xED4245
+                                        : 0x5865F2
+                            )
+                            .setTitle(
+                                `💱 SOLD ${symbol}`
+                            )
+                            .setDescription(
+                                `**${formatAmount(amount)} ${symbol}** sold successfully.`
+                            )
+                            .addFields(
+                                {
+                                    name:
+                                        "💵 Sale Value",
+                                    value:
+                                        `**${formatPrice(result.total)}** ${CURRENCY}`,
+                                    inline: true
+                                },
+                                {
+                                    name:
+                                        "💰 Original Investment",
+                                    value:
+                                        `**${formatPrice(result.invested)}** ${CURRENCY}`,
+                                    inline: true
+                                },
+                                {
+                                    name:
+                                        "📈 Profit / Loss",
+                                    value:
+                                        `${directionIcon(pnl)} **${profitText(pnl)}**\n` +
+                                        `(${percent(result.profitLossPercent)})`,
+                                    inline: true
+                                },
+                                {
+                                    name:
+                                        "🪙 New Wallet",
+                                    value:
+                                        `**${formatPrice(result.balance)}** ${CURRENCY}`,
+                                    inline: false
+                                }
+                            )
+                            .setFooter({
+                                text:
+                                    "Profit/Loss = sale value − original investment"
+                            })
+                            .setTimestamp()
+                    ]
+                });
             }
 
-            /* SHOP */
+            /* =================================================
+               SHOP
+            ================================================= */
 
-            if (command === "shop") {
+            if (
+                command === "shop"
+            ) {
                 const sub =
-                    String(args[0] || "")
-                        .toLowerCase();
+                    String(
+                        args[0] || ""
+                    ).toLowerCase();
 
                 if (
                     sub === "buy" ||
@@ -1420,8 +1855,12 @@ client.on(
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setColor(0x57F287)
-                                .setTitle("🛒 PURCHASE COMPLETE")
+                                .setColor(
+                                    0x57F287
+                                )
+                                .setTitle(
+                                    "🛒 PURCHASE COMPLETE"
+                                )
                                 .setDescription(
                                     `${shopIcon(result.item)} **${result.item}**\n\n` +
                                     `💸 Paid: **${money(result.price)}** ${CURRENCY}\n` +
@@ -1443,7 +1882,9 @@ client.on(
                 });
             }
 
-            /* INVENTORY */
+            /* =================================================
+               INVENTORY
+            ================================================= */
 
             if (
                 command === "inventory" ||
@@ -1461,19 +1902,24 @@ client.on(
                 }
 
                 const lines =
-                    inventory.map(item =>
-                        `${shopIcon(item.item)} **${item.item}** × **${item.amount}**`
+                    inventory.map(
+                        item =>
+                            `${shopIcon(item.item)} **${item.item}** × **${item.amount}**`
                     );
 
                 return message.reply({
                     embeds: [
                         new EmbedBuilder()
-                            .setColor(0x5865F2)
+                            .setColor(
+                                0x5865F2
+                            )
                             .setTitle(
                                 "🎒  INVENTORY"
                             )
                             .setDescription(
-                                lines.join("\n")
+                                lines.join(
+                                    "\n"
+                                )
                             )
                             .setFooter({
                                 text:
@@ -1484,7 +1930,9 @@ client.on(
                 });
             }
 
-            /* BUSINESSES */
+            /* =================================================
+               BUSINESSES
+            ================================================= */
 
             if (
                 command === "business" ||
@@ -1492,8 +1940,9 @@ client.on(
                 command === "biz"
             ) {
                 const sub =
-                    String(args[0] || "")
-                        .toLowerCase();
+                    String(
+                        args[0] || ""
+                    ).toLowerCase();
 
                 if (!sub) {
                     return message.reply({
@@ -1505,9 +1954,9 @@ client.on(
                     });
                 }
 
-                /* BUY BUSINESS */
-
-                if (sub === "buy") {
+                if (
+                    sub === "buy"
+                ) {
                     const requested =
                         args
                             .slice(1)
@@ -1520,15 +1969,12 @@ client.on(
                         );
                     }
 
-                    const slug =
-                        businessSlug(
-                            requested
-                        );
-
                     const result =
                         await db.buyBusiness(
                             message.author.id,
-                            slug
+                            businessSlug(
+                                requested
+                            )
                         );
 
                     if (!result.success) {
@@ -1540,7 +1986,9 @@ client.on(
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setColor(0x57F287)
+                                .setColor(
+                                    0x57F287
+                                )
                                 .setTitle(
                                     "🏢 BUSINESS ACQUIRED"
                                 )
@@ -1559,9 +2007,9 @@ client.on(
                     });
                 }
 
-                /* COLLECT */
-
-                if (sub === "collect") {
+                if (
+                    sub === "collect"
+                ) {
                     const requested =
                         args
                             .slice(1)
@@ -1580,15 +2028,12 @@ client.on(
                     }
 
                     if (requested) {
-                        const slug =
-                            businessSlug(
-                                requested
-                            );
-
                         const result =
                             await db.collectBusiness(
                                 message.author.id,
-                                slug
+                                businessSlug(
+                                    requested
+                                )
                             );
 
                         if (!result.success) {
@@ -1607,7 +2052,10 @@ client.on(
                     let total = 0;
                     let collected = 0;
 
-                    for (const business of owned) {
+                    for (
+                        const business of
+                        owned
+                    ) {
                         const result =
                             await db.collectBusiness(
                                 message.author.id,
@@ -1618,13 +2066,17 @@ client.on(
                             result.success
                         ) {
                             total +=
-                                num(result.amount);
+                                num(
+                                    result.amount
+                                );
 
                             collected++;
                         }
                     }
 
-                    if (collected === 0) {
+                    if (
+                        collected === 0
+                    ) {
                         return message.reply(
                             "⏳ Your businesses haven't generated enough income yet."
                         );
@@ -1633,7 +2085,9 @@ client.on(
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setColor(0x57F287)
+                                .setColor(
+                                    0x57F287
+                                )
                                 .setTitle(
                                     "💰 BUSINESS INCOME COLLECTED"
                                 )
@@ -1650,9 +2104,9 @@ client.on(
                     });
                 }
 
-                /* UPGRADE */
-
-                if (sub === "upgrade") {
+                if (
+                    sub === "upgrade"
+                ) {
                     const requested =
                         args
                             .slice(1)
@@ -1682,7 +2136,9 @@ client.on(
                     return message.reply({
                         embeds: [
                             new EmbedBuilder()
-                                .setColor(0xFEE75C)
+                                .setColor(
+                                    0xFEE75C
+                                )
                                 .setTitle(
                                     "⬆️ BUSINESS UPGRADED"
                                 )
@@ -1697,9 +2153,9 @@ client.on(
                     });
                 }
 
-                /* SELL */
-
-                if (sub === "sell") {
+                if (
+                    sub === "sell"
+                ) {
                     const requested =
                         args
                             .slice(1)
@@ -1732,8 +2188,6 @@ client.on(
                     );
                 }
 
-                /* MY BUSINESSES */
-
                 if (
                     sub === "mine" ||
                     sub === "owned" ||
@@ -1754,7 +2208,9 @@ client.on(
                 );
             }
 
-            /* TRANSACTIONS */
+            /* =================================================
+               TRANSACTIONS
+            ================================================= */
 
             if (
                 command === "transactions" ||
@@ -1766,43 +2222,56 @@ client.on(
                         10
                     );
 
-                if (!transactions.length) {
+                if (
+                    !transactions.length
+                ) {
                     return message.reply(
                         "📜 No transactions yet."
                     );
                 }
 
                 const lines =
-                    transactions.map(tx =>
-                        `**${String(tx.type).toUpperCase()}** • ${cleanSymbol(tx.symbol)}\n` +
-                        `> ${formatAmount(tx.amount)} × ${formatPrice(tx.price)} = **${formatPrice(tx.total)}**`
+                    transactions.map(
+                        tx =>
+                            `**${String(tx.type).toUpperCase()}** • ${cleanSymbol(tx.symbol)}\n` +
+                            `> ${formatAmount(tx.amount)} × ${formatPrice(tx.price)} = **${formatPrice(tx.total)}**`
                     );
 
                 return message.reply({
                     embeds: [
                         new EmbedBuilder()
-                            .setColor(0x5865F2)
+                            .setColor(
+                                0x5865F2
+                            )
                             .setTitle(
                                 "📜  TRANSACTIONS"
                             )
                             .setDescription(
-                                lines.join("\n\n")
+                                lines.join(
+                                    "\n\n"
+                                )
                             )
                             .setTimestamp()
                     ]
                 });
             }
 
-            /* LEADERBOARD */
+            /* =================================================
+               LEADERBOARD
+            ================================================= */
 
             if (
                 command === "leaderboard" ||
                 command === "lb"
             ) {
                 const leaderboard =
-                    await db.getLeaderboard(10);
+                    await db.getLeaderboard(
+                        10
+                    );
 
-                if (!leaderboard.length) {
+                if (
+                    !leaderboard.length
+                ) {
                     return message.reply(
                         "🏆 No leaderboard data yet."
                     );
@@ -1810,7 +2279,10 @@ client.on(
 
                 const lines =
                     leaderboard.map(
-                        (entry, index) => {
+                        (
+                            entry,
+                            index
+                        ) => {
                             const worth =
                                 entry.netWorth ??
                                 entry.net_worth ??
@@ -1826,12 +2298,16 @@ client.on(
                 return message.reply({
                     embeds: [
                         new EmbedBuilder()
-                            .setColor(0xFEE75C)
+                            .setColor(
+                                0xFEE75C
+                            )
                             .setTitle(
                                 "🏆  NET WORTH LEADERBOARD"
                             )
                             .setDescription(
-                                lines.join("\n")
+                                lines.join(
+                                    "\n"
+                                )
                             )
                             .setFooter({
                                 text:
@@ -1842,15 +2318,21 @@ client.on(
                 });
             }
 
-            /* DAILY */
+            /* =================================================
+               DAILY
+            ================================================= */
 
-            if (command === "daily") {
+            if (
+                command === "daily"
+            ) {
                 const result =
                     await db.setDailyClaim(
                         message.author.id
                     );
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         `⏳ Daily already claimed.\n` +
                         `Try again in **${timeLeft(result.next)}**.`
@@ -1862,15 +2344,21 @@ client.on(
                 );
             }
 
-            /* WEEKLY */
+            /* =================================================
+               WEEKLY
+            ================================================= */
 
-            if (command === "weekly") {
+            if (
+                command === "weekly"
+            ) {
                 const result =
                     await db.setWeeklyClaim(
                         message.author.id
                     );
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         `⏳ Weekly already claimed.\n` +
                         `Try again in **${timeLeft(result.next)}**.`
@@ -1882,15 +2370,21 @@ client.on(
                 );
             }
 
-            /* LUCK */
+            /* =================================================
+               LUCK
+            ================================================= */
 
-            if (command === "luck") {
+            if (
+                command === "luck"
+            ) {
                 const result =
                     await db.claimLuck(
                         message.author.id
                     );
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         `⏳ Luck already used today.\n` +
                         `Try again **${result.next || "tomorrow"}**.`
@@ -1908,9 +2402,13 @@ client.on(
                 );
             }
 
-            /* GIVE */
+            /* =================================================
+               GIVE
+            ================================================= */
 
-            if (command === "give") {
+            if (
+                command === "give"
+            ) {
                 if (
                     !isStaff(
                         message.author.id
@@ -1926,12 +2424,16 @@ client.on(
 
                 const amount =
                     parseAmount(
-                        args[target ? 1 : 0]
+                        args[
+                            target ? 1 : 0
+                        ]
                     );
 
                 if (
                     !target ||
-                    !Number.isFinite(amount) ||
+                    !Number.isFinite(
+                        amount
+                    ) ||
                     amount <= 0
                 ) {
                     return message.reply(
@@ -1960,9 +2462,13 @@ client.on(
                 );
             }
 
-            /* PING */
+            /* =================================================
+               PING
+            ================================================= */
 
-            if (command === "ping") {
+            if (
+                command === "ping"
+            ) {
                 const sent =
                     await message.reply(
                         "🏓 Checking..."
@@ -1979,9 +2485,13 @@ client.on(
                 );
             }
 
-            /* HELP */
+            /* =================================================
+               HELP
+            ================================================= */
 
-            if (command === "help") {
+            if (
+                command === "help"
+            ) {
                 return message.reply({
                     embeds: [
                         createHelpEmbed()
@@ -1989,20 +2499,27 @@ client.on(
                 });
             }
 
-            /* OWNER */
+            /* =================================================
+               OWNER
+            ================================================= */
 
-            if (command === "owner") {
+            if (
+                command === "owner"
+            ) {
                 return message.reply({
                     embeds: [
                         new EmbedBuilder()
-                            .setColor(0x5865F2)
+                            .setColor(
+                                0x5865F2
+                            )
                             .setTitle(
                                 "👑  MARKETBOT OWNER"
                             )
                             .setDescription(
                                 `**Owners**\n` +
                                 `${OWNERS.map(
-                                    id => `<@${id}>`
+                                    id =>
+                                        `<@${id}>`
                                 ).join("\n")}\n\n` +
                                 `**Co-owner**\n` +
                                 `<@${CO_OWNER}>`
@@ -2012,9 +2529,13 @@ client.on(
                 });
             }
 
-            /* OWNER COMMANDS */
+            /* =================================================
+               OWNER COMMANDS
+            ================================================= */
 
-            if (command === "ownercmds") {
+            if (
+                command === "ownercmds"
+            ) {
                 if (
                     !isOwner(
                         message.author.id
@@ -2028,7 +2549,9 @@ client.on(
                 return message.reply({
                     embeds: [
                         new EmbedBuilder()
-                            .setColor(0xED4245)
+                            .setColor(
+                                0xED4245
+                            )
                             .setTitle(
                                 "👑  OWNER COMMANDS"
                             )
@@ -2044,9 +2567,13 @@ client.on(
                 });
             }
 
-            /* SET */
+            /* =================================================
+               SET MARKET
+            ================================================= */
 
-            if (command === "set") {
+            if (
+                command === "set"
+            ) {
                 if (
                     !isOwner(
                         message.author.id
@@ -2058,10 +2585,14 @@ client.on(
                 }
 
                 const symbol =
-                    cleanSymbol(args[0]);
+                    cleanSymbol(
+                        args[0]
+                    );
 
                 const targetChange =
-                    parseAmount(args[1]);
+                    parseAmount(
+                        args[1]
+                    );
 
                 if (
                     !symbol ||
@@ -2075,7 +2606,9 @@ client.on(
                 }
 
                 const asset =
-                    await findAsset(symbol);
+                    await findAsset(
+                        symbol
+                    );
 
                 if (!asset) {
                     return message.reply(
@@ -2083,11 +2616,61 @@ client.on(
                     );
                 }
 
-                const difference =
-                    targetChange -
-                    num(
-                        asset.change_percent
+                /*
+                   !set now means:
+                   set the asset's CURRENT price
+                   relative to its base price.
+
+                   Example:
+                   !set ADA 20
+
+                   means ADA should be +20%
+                   from its base price.
+
+                   But the $1 floor still applies.
+                */
+
+                const basePrice =
+                    Math.max(
+                        1,
+                        num(
+                            asset.base_price
+                        )
                     );
+
+                let targetPrice =
+                    basePrice *
+                    (
+                        1 +
+                        targetChange / 100
+                    );
+
+                targetPrice =
+                    Math.max(
+                        1,
+                        targetPrice
+                    );
+
+                /*
+                   Convert target price into
+                   a movement from current price.
+                */
+                const currentPrice =
+                    Math.max(
+                        1,
+                        num(asset.price)
+                    );
+
+                const difference =
+                    currentPrice > 0
+                        ? (
+                            (
+                                targetPrice -
+                                currentPrice
+                            ) /
+                            currentPrice
+                        ) * 100
+                        : 0;
 
                 const result =
                     await db.setAssetChange(
@@ -2095,20 +2678,27 @@ client.on(
                         difference
                     );
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         "❌ Failed to change market."
                     );
                 }
 
                 return message.reply(
-                    `📊 **${symbol}** changed to **${percent(result.newChange)}**.`
+                    `📊 **${symbol}** is now **${formatPrice(result.newPrice)}**.\n` +
+                    `📈 Base change: **${percent(result.newChange)}**`
                 );
             }
 
-            /* RESET MARKET */
+            /* =================================================
+               RESET MARKET
+            ================================================= */
 
-            if (command === "resetmarket") {
+            if (
+                command === "resetmarket"
+            ) {
                 if (
                     !isOwner(
                         message.author.id
@@ -2122,20 +2712,26 @@ client.on(
                 const result =
                     await db.resetMarket();
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         "❌ Failed to reset market."
                     );
                 }
 
                 return message.reply(
-                    "🔄 Market reset successfully."
+                    "🔄 Market reset successfully. All assets returned to their base prices."
                 );
             }
 
-            /* RESET BALANCE */
+            /* =================================================
+               RESET BALANCE
+            ================================================= */
 
-            if (command === "resetbalance") {
+            if (
+                command === "resetbalance"
+            ) {
                 if (
                     !isOwner(
                         message.author.id
@@ -2160,7 +2756,9 @@ client.on(
                         target.id
                     );
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         `❌ ${result.reason || "Failed to reset balance."}`
                     );
@@ -2171,9 +2769,13 @@ client.on(
                 );
             }
 
-            /* RESET ALL */
+            /* =================================================
+               RESET ALL
+            ================================================= */
 
-            if (command === "resetall") {
+            if (
+                command === "resetall"
+            ) {
                 if (
                     !isOwner(
                         message.author.id
@@ -2187,7 +2789,9 @@ client.on(
                 const result =
                     await db.resetAll();
 
-                if (!result.success) {
+                if (
+                    !result.success
+                ) {
                     return message.reply(
                         "❌ Failed to reset economy."
                     );
@@ -2218,7 +2822,8 @@ client.on(
             );
 
             console.error(
-                error?.stack || error
+                error?.stack ||
+                error
             );
 
             console.error(
@@ -2249,11 +2854,25 @@ client.once(
             "📈 Market engine started."
         );
 
+        console.log(
+            "⏱️ Market updates every 2 minutes."
+        );
+
+        console.log(
+            "🛡️ Minimum asset price: $1.00"
+        );
+
+        /*
+           Run one update when the bot starts.
+        */
         await updateMarket();
 
+        /*
+           Then update exactly every 2 minutes.
+        */
         setInterval(
             updateMarket,
-            30 * 1000
+            MARKET_UPDATE_INTERVAL
         );
     }
 );
@@ -2270,14 +2889,16 @@ async function startBot() {
             );
         }
 
-        if (!process.env.DATABASE_URL) {
+        if (
+            !process.env.DATABASE_URL
+        ) {
             throw new Error(
                 "DATABASE_URL is missing."
             );
         }
 
         console.log(
-            "🔄 Initializing Supabase database..."
+            "🔄 Initializing PostgreSQL database..."
         );
 
         await db.initDatabase();
@@ -2299,7 +2920,8 @@ async function startBot() {
         );
 
         console.error(
-            error?.stack || error
+            error?.stack ||
+            error
         );
 
         console.error(
@@ -2315,7 +2937,8 @@ process.on(
     error => {
         console.error(
             "UNHANDLED REJECTION:",
-            error?.stack || error
+            error?.stack ||
+            error
         );
     }
 );
@@ -2325,7 +2948,8 @@ process.on(
     error => {
         console.error(
             "UNCAUGHT EXCEPTION:",
-            error?.stack || error
+            error?.stack ||
+            error
         );
     }
 );
