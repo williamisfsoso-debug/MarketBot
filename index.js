@@ -32,12 +32,70 @@ const CO_OWNER =
 const PORT =
     Number(process.env.PORT) || 10000;
 
-/*
-   MARKET UPDATE:
-   Every 2 minutes.
-*/
+/* =========================================================
+   MARKET SETTINGS
+========================================================= */
+
 const MARKET_UPDATE_INTERVAL =
     2 * 60 * 1000;
+
+/* =========================================================
+   WORK / JOB SETTINGS
+========================================================= */
+
+const WORK_COOLDOWN =
+    5 * 60 * 1000;
+
+const WORK_JOBS = [
+    {
+        name: "Delivery Driver",
+        icon: "📦",
+        min: 3000,
+        max: 12000
+    },
+    {
+        name: "Car Dealer",
+        icon: "🚗",
+        min: 5000,
+        max: 15000
+    },
+    {
+        name: "Contractor",
+        icon: "🏗️",
+        min: 6000,
+        max: 18000
+    },
+    {
+        name: "Software Developer",
+        icon: "💻",
+        min: 8000,
+        max: 20000
+    },
+    {
+        name: "Jeweler",
+        icon: "💎",
+        min: 10000,
+        max: 25000
+    },
+    {
+        name: "Bank Manager",
+        icon: "🏦",
+        min: 15000,
+        max: 35000
+    },
+    {
+        name: "CEO",
+        icon: "👔",
+        min: 25000,
+        max: 50000
+    }
+];
+
+const workCooldowns = new Map();
+
+/* =========================================================
+   ASSET ICONS
+========================================================= */
 
 const ASSET_ICONS = {
     BTC: "₿",
@@ -162,15 +220,6 @@ function formatAmount(value) {
     );
 }
 
-/*
-   Prices are now deliberately clean.
-
-   >= 1,000,000 -> $1.25M
-   >= 1,000     -> $1,250.00
-   >= 1         -> $1.25
-
-   Nothing below $1 should exist.
-*/
 function formatPrice(value) {
     const n =
         Math.max(
@@ -387,6 +436,292 @@ function businessSlug(value) {
         .trim()
         .toLowerCase()
         .replace(/\s+/g, "-");
+}
+
+/* =========================================================
+   WORK HELPERS
+========================================================= */
+
+function randomWorkAmount(min, max) {
+    return Math.floor(
+        Math.random() *
+        (max - min + 1)
+    ) + min;
+}
+
+function getWorkRemaining(userId) {
+    const lastWork =
+        workCooldowns.get(userId);
+
+    if (!lastWork) {
+        return 0;
+    }
+
+    const remaining =
+        WORK_COOLDOWN -
+        (Date.now() - lastWork);
+
+    return remaining > 0
+        ? remaining
+        : 0;
+}
+
+function formatWorkCooldown(ms) {
+    const totalSeconds =
+        Math.ceil(ms / 1000);
+
+    const minutes =
+        Math.floor(
+            totalSeconds / 60
+        );
+
+    const seconds =
+        totalSeconds % 60;
+
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    }
+
+    return `${seconds}s`;
+}
+
+async function handleWorkCommand(message) {
+    const userId =
+        message.author.id;
+
+    const remaining =
+        getWorkRemaining(userId);
+
+    if (remaining > 0) {
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle(
+                        "💼  WORK COOLDOWN"
+                    )
+                    .setDescription(
+                        "You've already completed a job recently.\n\n" +
+                        `⏱️ **Come back in:** ${formatWorkCooldown(remaining)}`
+                    )
+                    .addFields({
+                        name: "💼 Next Shift",
+                        value:
+                            "Your next job will be available soon.",
+                        inline: false
+                    })
+                    .setFooter({
+                        text:
+                            "You can work once every 5 minutes."
+                    })
+                    .setTimestamp()
+            ]
+        });
+    }
+
+    const job =
+        WORK_JOBS[
+            Math.floor(
+                Math.random() *
+                WORK_JOBS.length
+            )
+        ];
+
+    let earned =
+        randomWorkAmount(
+            job.min,
+            job.max
+        );
+
+    let bonusText = "";
+    let bonusName = "";
+
+    /*
+       Positive performance bonuses.
+       There is no loss or wager involved.
+    */
+
+    const eventRoll =
+        Math.random();
+
+    if (eventRoll < 0.08) {
+        const bonus =
+            Math.floor(
+                earned * 0.50
+            );
+
+        earned += bonus;
+
+        bonusName =
+            "🔥 Lucky Performance";
+
+        bonusText =
+            `\n\n🔥 **Lucky Performance!**\n` +
+            `You received an extra **${money(bonus)}** ${CURRENCY}!`;
+    } else if (eventRoll < 0.15) {
+        const bonus =
+            Math.floor(
+                earned * 0.25
+            );
+
+        earned += bonus;
+
+        bonusName =
+            "✨ Great Performance";
+
+        bonusText =
+            `\n\n✨ **Great Performance!**\n` +
+            `You received an extra **${money(bonus)}** ${CURRENCY}!`;
+    }
+
+    try {
+        await db.getOrCreateUser(
+            userId
+        );
+
+        const success =
+            await db.addWallet(
+                userId,
+                earned
+            );
+
+        if (!success) {
+            return message.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xED4245)
+                        .setTitle(
+                            "❌ PAYMENT FAILED"
+                        )
+                        .setDescription(
+                            "Your work was completed, but the payment could not be processed.\n\n" +
+                            "Please try again later."
+                        )
+                        .setTimestamp()
+                ]
+            });
+        }
+
+        workCooldowns.set(
+            userId,
+            Date.now()
+        );
+
+        const account =
+            await db.getOrCreateUser(
+                userId
+            );
+
+        const wallet =
+            num(account.wallet);
+
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x57F287)
+                    .setAuthor({
+                        name:
+                            message.author.username,
+                        iconURL:
+                            message.author.displayAvatarURL()
+                    })
+                    .setTitle(
+                        "💼  WORK COMPLETE"
+                    )
+                    .setDescription(
+                        `${job.icon} You worked as a **${job.name}**!\n\n` +
+                        `💰 **You earned:** ${CURRENCY} **${money(earned)}**` +
+                        bonusText
+                    )
+                    .addFields(
+                        {
+                            name: "💼 Job",
+                            value:
+                                `${job.icon} **${job.name}**`,
+                            inline: true
+                        },
+                        {
+                            name: "💵 Payment",
+                            value:
+                                `**${money(earned)}** ${CURRENCY}`,
+                            inline: true
+                        },
+                        {
+                            name: "🪙 Wallet",
+                            value:
+                                `**${money(wallet)}** ${CURRENCY}`,
+                            inline: true
+                        }
+                    )
+                    .setFooter({
+                        text:
+                            bonusName
+                                ? `${bonusName} • Next work available in 5 minutes`
+                                : "Next work available in 5 minutes"
+                    })
+                    .setTimestamp()
+            ]
+        });
+    } catch (error) {
+        console.error(
+            "WORK ERROR:",
+            error?.stack ||
+            error
+        );
+
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0xED4245)
+                    .setTitle(
+                        "❌ WORK ERROR"
+                    )
+                    .setDescription(
+                        "Something went wrong while processing your work payment."
+                    )
+                    .setTimestamp()
+            ]
+        });
+    }
+}
+
+async function handleJobsCommand(message) {
+    const description =
+        WORK_JOBS
+            .map(job => {
+                return (
+                    `${job.icon} **${job.name}**\n` +
+                    `> 💰 ${CURRENCY} **${money(job.min)} - ${money(job.max)}**`
+                );
+            })
+            .join("\n\n");
+
+    return message.reply({
+        embeds: [
+            new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle(
+                    "💼  AVAILABLE JOBS"
+                )
+                .setDescription(
+                    "Work different jobs to earn virtual money.\n\n" +
+                    description
+                )
+                .addFields({
+                    name: "📋 How It Works",
+                    value:
+                        "Use `!work` to receive a random job and get paid.\n" +
+                        "You can work once every **5 minutes**.\n\n" +
+                        "✨ Some jobs can receive a positive performance bonus.",
+                    inline: false
+                })
+                .setFooter({
+                    text:
+                        "MarketBot • Virtual Economy"
+                })
+                .setTimestamp()
+        ]
+    });
 }
 
 /* =========================================================
@@ -1205,6 +1540,14 @@ function createHelpEmbed() {
             },
             {
                 name:
+                    "💼 WORK",
+                value:
+                    "`!work` — Work a random job\n" +
+                    "`!jobs` — View available jobs",
+                inline: false
+            },
+            {
+                name:
                     "🏢 BUSINESSES",
                 value:
                     "`!business` — Business empire\n" +
@@ -1271,9 +1614,6 @@ async function updateMarket() {
 
             /*
                Small realistic movement.
-
-               Every asset gets exactly ONE
-               movement during this cycle.
 
                Range:
                -2.50% to +2.50%
@@ -1473,6 +1813,30 @@ client.on(
                         )
                     ]
                 });
+            }
+
+            /* =================================================
+               WORK
+            ================================================= */
+
+            if (
+                command === "work"
+            ) {
+                return handleWorkCommand(
+                    message
+                );
+            }
+
+            /* =================================================
+               JOBS
+            ================================================= */
+
+            if (
+                command === "jobs"
+            ) {
+                return handleJobsCommand(
+                    message
+                );
             }
 
             /* =================================================
@@ -2616,20 +2980,6 @@ client.on(
                     );
                 }
 
-                /*
-                   !set now means:
-                   set the asset's CURRENT price
-                   relative to its base price.
-
-                   Example:
-                   !set ADA 20
-
-                   means ADA should be +20%
-                   from its base price.
-
-                   But the $1 floor still applies.
-                */
-
                 const basePrice =
                     Math.max(
                         1,
@@ -2651,10 +3001,6 @@ client.on(
                         targetPrice
                     );
 
-                /*
-                   Convert target price into
-                   a movement from current price.
-                */
                 const currentPrice =
                     Math.max(
                         1,
@@ -2862,14 +3208,12 @@ client.once(
             "🛡️ Minimum asset price: $1.00"
         );
 
-        /*
-           Run one update when the bot starts.
-        */
+        console.log(
+            "💼 Work system enabled."
+        );
+
         await updateMarket();
 
-        /*
-           Then update exactly every 2 minutes.
-        */
         setInterval(
             updateMarket,
             MARKET_UPDATE_INTERVAL
